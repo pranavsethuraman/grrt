@@ -170,6 +170,9 @@ Silent guessing in GR will introduce bugs that take hours to find.
 - **Prefer fewer files.** This codebase is intentionally small.
 - **Ask when a change would touch the `Metric` interface.** It is the
   load-bearing abstraction for Phases 2-3.
+- **No attribution trailers in commit messages.** Do not add
+  `Co-Authored-By: Claude`, `Generated with Claude Code`, or any similar
+  footer. Commits carry only the subject line and body the user specifies.
 
 ---
 
