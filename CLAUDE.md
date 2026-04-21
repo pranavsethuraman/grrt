@@ -66,7 +66,10 @@ as single-file extensions later.
 - **Units:** geometrized, G = c = 1. Mass M has dimensions of length; default M = 1.
 - **Coordinates:** (t, r, θ, φ) with indices 0, 1, 2, 3.
 - **State vector (length 8):** `[t, r, θ, φ, k^t, k^r, k^θ, k^φ]`
-- **Affine parameter:** λ. Backward integration from observer to source.
+- **Affine parameter:** λ. Trace null geodesics forward in λ (h > 0) from
+  the observer; by time-symmetry of the geodesic equation, the traced
+  curve is the reverse of the physical photon's path. Intersections with
+  horizon, disk, or celestial sphere identify the source.
 - **Null condition:** `g_{μν} k^μ k^ν = 0`. Monitored for numerical drift.
 
 **Schwarzschild landmarks (used in tests):**
@@ -139,7 +142,7 @@ Silent guessing in GR will introduce bugs that take hours to find.
 - [x] `SchwarzschildMetric` with closed-form Christoffels + optimized acceleration
 - [x] `MinkowskiMetric` for integrator testing
 - [x] `Integrator` interface + fixed-step `RK4`
-- [ ] `Camera` (observer tetrad, pixel → initial 4-momentum)
+- [x] `Camera` (static observer tetrad in Schwarzschild, pixel → null 4-momentum)
 - [ ] `Renderer` (pixel loop, FITS output, parallel)
 - [ ] Validation: shadow radius converges to 3√3 M
 - [ ] `KerrMetric` (Phase 2)
