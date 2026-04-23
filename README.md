@@ -63,7 +63,7 @@ If this code supports work leading to a publication, please cite the repository 
 
 ```
 Sethuraman, P. (2026). grrt: a general relativistic ray tracer in Java.
-https://github.com/purunabu/grrt  (tag: phase-2-complete)
+https://github.com/pranavsethuraman/grrt  (tag: phase-2-complete)
 ```
 
 ## References
