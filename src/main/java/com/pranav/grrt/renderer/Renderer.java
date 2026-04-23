@@ -11,75 +11,99 @@ import java.util.function.Supplier;
 import java.util.stream.IntStream;
 
 /**
- * Pixel loop + ray tracer. For each pixel the Camera provides an initial
- * 8-state, the integrator advances it in affine parameter, and the shader
- * assigns a float value based on the terminal outcome.
+ * Pixel loop + ray tracer. For each pixel the {@link Camera} provides an
+ * initial 8-state, a {@link RayTracer} advances it to termination, and
+ * the {@link RayShader} assigns a float value based on the terminal
+ * outcome.
+ *
+ * <h2>Strategy split (Phase 2 C1)</h2>
+ *
+ * Ray tracing is delegated to a {@link RayTracer}:
+ * <ul>
+ *   <li>{@link FixedStepRayTracer} — Phase 1 two-zone fixed-step RK4,
+ *       used by the backward-compatible constructor that takes a
+ *       {@code Supplier<Integrator>}.</li>
+ *   <li>{@link AdaptiveRayTracer} — Phase 2 DP45 + polar-axis reflection,
+ *       selected via {@link #withRayTracer}.</li>
+ * </ul>
+ * The strategy is fixed at construction. A {@link Supplier} of
+ * {@link RayTracer} is used to hand each worker thread its own instance
+ * (both tracer flavours are stateful and not thread-safe).
  *
  * <h2>Termination</h2>
  *
- * Per {@link RenderConfig}:
- * <ul>
- *   <li>r &lt; horizonRadius + horizonCushion ⇒ CAPTURED</li>
- *   <li>r &gt; escapeRadius ⇒ ESCAPED</li>
- *   <li>any NaN in the state ⇒ NAN (shaded as captured by Phase 1 shader)</li>
- *   <li>step count ≥ maxSteps ⇒ MAX_STEPS (likewise)</li>
- * </ul>
- *
- * <h2>Step size</h2>
- *
- * Two-zone adaptive: {@code h = hNear} when {@code r ≤ rTransition},
- * {@code h = hFar} otherwise. Zone is re-evaluated every step. This is the
- * cheapest useful adaptivity; real adaptive stepping (Dormand-Prince) is
- * deferred to Phase 2.
+ * Delegated to the {@link RayTracer} implementation, which reads
+ * {@link RenderConfig#horizonCushion()}, {@link RenderConfig#escapeRadius()},
+ * and {@link RenderConfig#maxSteps()}.
  *
  * <h2>Parallelism</h2>
  *
  * Pixels are processed in parallel via {@code IntStream.range(0, W*H).parallel()}.
- * Each worker uses its own {@link ThreadLocal} {@link Integrator}
- * (RK4 holds scratch buffers and is not thread-safe) plus thread-local
- * state buffers. {@link Camera} is shared (thread-safe). Because each
- * output pixel is written by exactly one worker and the shader is pure,
- * the result is deterministic regardless of thread scheduling.
- *
- * <h2>Runtime</h2>
- *
- * Estimated wall-clock on Apple M3 (8 cores, 3 GHz), Schwarzschild at
- * r_obs = 1000 M, fov ≈ 20 M/r_obs, two-zone steps:
- * <ul>
- *   <li>256×256  ≈ 16 s</li>
- *   <li>1024×1024 ≈ 4–5 min</li>
- * </ul>
- * Assumes ~5000 RK4 steps/ray average (much higher near the shadow edge
- * due to photon-sphere grazing) and ~500 FLOPs/step for RK4 + Schwarzschild
- * optimized acceleration + state update + termination checks, with Java
- * JIT and GC overhead included.
+ * Each worker uses its own {@link ThreadLocal} {@link RayTracer} plus a
+ * thread-local state buffer. {@link Camera} is shared (thread-safe).
+ * Because each output pixel is written by exactly one worker and the
+ * shader is pure, the result is deterministic regardless of thread
+ * scheduling.
  */
 public final class Renderer {
 
     private final Camera camera;
     private final Metric metric;
-    private final Supplier<Integrator> integratorFactory;
+    private final Supplier<RayTracer> tracerFactory;
     private final RenderConfig config;
 
     /**
-     * @param camera             provides initial states; must be built against
-     *                           {@code metric}
-     * @param metric             spacetime metric used by the integrator
-     * @param integratorFactory  produces a fresh {@link Integrator} for each
-     *                           worker thread (RK4 is not thread-safe). Typical
-     *                           value: {@code RK4::new}.
-     * @param config             termination, step-size, shader settings
+     * Phase 1 backward-compatible constructor. The supplied fixed-step
+     * {@link Integrator} is wrapped in a {@link FixedStepRayTracer} per
+     * worker thread.
+     *
+     * @param camera            provides initial states
+     * @param metric            spacetime metric
+     * @param integratorFactory one fresh fixed-step integrator per worker
+     *                          (e.g. {@code RK4::new})
+     * @param config            termination + shader settings
      */
     public Renderer(Camera camera, Metric metric,
                     Supplier<Integrator> integratorFactory,
                     RenderConfig config) {
-        if (camera == null || metric == null || integratorFactory == null || config == null) {
+        this(camera, metric, config,
+             integratorFactoryToTracerFactory(integratorFactory, metric, config));
+    }
+
+    /**
+     * Phase 2+ constructor taking a {@link RayTracer} factory directly.
+     * Use this for adaptive integration or any other custom strategy.
+     *
+     * @param camera        provides initial states
+     * @param metric        spacetime metric
+     * @param tracerFactory one fresh {@link RayTracer} per worker thread
+     * @param config        termination + shader settings
+     */
+    public static Renderer withRayTracer(Camera camera, Metric metric,
+                                         Supplier<RayTracer> tracerFactory,
+                                         RenderConfig config) {
+        return new Renderer(camera, metric, config, tracerFactory);
+    }
+
+    /** Shared private constructor. Parameter order differs from the public
+     *  Phase 1 constructor to avoid a {@code Supplier<X>} erasure collision. */
+    private Renderer(Camera camera, Metric metric, RenderConfig config,
+                     Supplier<RayTracer> tracerFactory) {
+        if (camera == null || metric == null || tracerFactory == null || config == null) {
             throw new IllegalArgumentException("null argument");
         }
         this.camera = camera;
         this.metric = metric;
-        this.integratorFactory = integratorFactory;
+        this.tracerFactory = tracerFactory;
         this.config = config;
+    }
+
+    private static Supplier<RayTracer> integratorFactoryToTracerFactory(
+            Supplier<Integrator> integratorFactory, Metric metric, RenderConfig config) {
+        if (integratorFactory == null) {
+            throw new IllegalArgumentException("integratorFactory must not be null");
+        }
+        return () -> new FixedStepRayTracer(integratorFactory.get(), metric, config);
     }
 
     /**
@@ -93,20 +117,17 @@ public final class Renderer {
         final int H = camera.height();
         final float[][] image = new float[H][W];
 
-        // Per-thread state: one Integrator + two 8-element buffers per worker.
-        final ThreadLocal<Integrator> tlInt = ThreadLocal.withInitial(integratorFactory);
-        final ThreadLocal<double[]> tlY    = ThreadLocal.withInitial(() -> new double[8]);
-        final ThreadLocal<double[]> tlNext = ThreadLocal.withInitial(() -> new double[8]);
+        final ThreadLocal<RayTracer> tlTracer = ThreadLocal.withInitial(tracerFactory);
+        final ThreadLocal<double[]>  tlY      = ThreadLocal.withInitial(() -> new double[8]);
 
         IntStream.range(0, W * H).parallel().forEach(idx -> {
             int i = idx % W;
             int j = idx / W;
-            double[] y    = tlY.get();
-            double[] next = tlNext.get();
-            Integrator rk = tlInt.get();
+            double[] y = tlY.get();
+            RayTracer tracer = tlTracer.get();
 
             camera.initialState(i, j, y);
-            RayOutcome outcome = traceRay(rk, y, next);
+            RayOutcome outcome = tracer.trace(y);
             image[j][i] = config.shader().shade(outcome, y);
         });
 
@@ -130,38 +151,5 @@ public final class Renderer {
                 config.stepPolicyString(),
                 config.maxSteps(),
                 FitsWriter.gitHash());
-    }
-
-    /**
-     * Integrate one ray from its initial state until it hits a termination
-     * condition. Writes the final state back into {@code y}.
-     */
-    private RayOutcome traceRay(Integrator rk, double[] y, double[] next) {
-        final double rCapture  = metric.horizonRadius() + config.horizonCushion();
-        final double rEscape   = config.escapeRadius();
-        final double rTrans    = config.rTransition();
-        final double hNear     = config.hNear();
-        final double hFar      = config.hFar();
-        final int maxSteps     = config.maxSteps();
-
-        for (int step = 0; step < maxSteps; step++) {
-            double r = y[1];
-            double h = (r > rTrans) ? hFar : hNear;
-            rk.step(metric, y, h, next);
-            // Copy back into y.
-            System.arraycopy(next, 0, y, 0, 8);
-
-            double rNow = y[1];
-            if (Double.isNaN(rNow) || Double.isNaN(y[4])) {
-                return RayOutcome.NAN;
-            }
-            if (rNow < rCapture) {
-                return RayOutcome.CAPTURED;
-            }
-            if (rNow > rEscape) {
-                return RayOutcome.ESCAPED;
-            }
-        }
-        return RayOutcome.MAX_STEPS;
     }
 }
