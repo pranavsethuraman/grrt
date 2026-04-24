@@ -8,14 +8,22 @@ Context for Claude Code sessions in this repository. Read this before writing co
 
 **grrt** is a general relativistic ray tracer in Java 21, built with Maven. It
 simulates null geodesics in curved spacetime to produce black hole images. The
-end goal is a Research Notes of the AAS (RNAAS) paper measuring photon ring
-asymmetry vs. a parameterized deviation from Kerr (Johannsen-Psaltis formalism),
-compared against Event Horizon Telescope observations of M87*.
+end goal is a Research Notes of the AAS (RNAAS) paper using photon-ring
+asymmetry as a diagnostic of the Johannsen-Psaltis (JP) prograde photon-sphere
+bifurcation at M87*-consistent spin. Two coupled results:
+
+1. A two-sided bound on ε₃ extracted from the smooth-deformation regime
+   (ε₃ ∈ (ε₃_pathology, ε₃_crit) at a = 0.9, approximately (−2.97, +0.12))
+   by interpolating δ_r/⟨r⟩ against EHT Paper VI Table 7 circularity.
+2. A prediction, testable by future higher-precision observations, of a
+   qualitative shadow-structure change at ε₃_crit ≈ 0.12 for a = 0.9:
+   above the cusp the prograde side of the shadow is bounded by the event
+   horizon itself, not by a photon sphere.
 
 **Phases**
 1. Schwarzschild ray tracer with fixed-step RK4. (current)
 2. Kerr metric, adaptive Dormand-Prince, disk emission.
-3. Johannsen-Psaltis metric, EHT comparison, paper.
+3. Johannsen-Psaltis metric, photon-ring asymmetry sweep (smooth regime + cusp), EHT comparison, RNAAS paper.
 
 **Hardware target:** MacBook Pro M3, 16 GB. macOS aarch64.
 
