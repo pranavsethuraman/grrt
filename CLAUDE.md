@@ -135,6 +135,25 @@ Silent guessing in GR will introduce bugs that take hours to find.
 
 ---
 
+## Session Hygiene
+
+At any major checkpoint — sub-phase complete, end-of-session, before
+`/compact`, before `Ctrl+D`, or before any pause longer than ~30 minutes —
+write current state to `docs/phase-Nx-status.md` where `Nx` is the current
+sub-phase (e.g. `phase-3a-status.md`). Include:
+
+- Files modified this session with brief summaries.
+- Review items resolved / in-progress / pending, with evidence.
+- Current `mvn test` results.
+- Any open diff prompts or pending tool calls.
+- The exact next action to take on resume.
+
+Do not commit the status file unless the sub-phase is complete and tagged;
+uncommitted status files are fine and survive compaction, terminal close,
+and laptop reboot.
+
+---
+
 ## Status (update as phases complete)
 
 - [x] Maven scaffold, Java 21, dependencies
