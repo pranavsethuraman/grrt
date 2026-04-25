@@ -188,13 +188,13 @@ def photon_orbit(M_val: float, a_val: float, eps3_val: float,
 # ---------------------------------------------------------------------------
 
 pairs = [
-    (0.0,  0.0),    # Schwarzschild, r_ph = 3 M (exact)
-    (0.9,  0.0),    # Kerr a=0.9, BardeenShadowTest cross-check
-    (0.9, +0.5),    # primary sweep point
-    (0.9, -0.5),    # primary sweep point
-    (0.9, +1.0),    # sweep-density boundary
-    (0.9, -1.0),    # sweep-density boundary
-    (0.5, +0.5),    # intermediate-a coverage (amendment 3)
+    (0.0,  0.0),    # Schwarzschild anchor, r_ph = 3 M (exact)
+    (0.9,  0.0),    # Kerr a=0.9 anchor, BardeenShadowTest cross-check
+    (0.9, +0.05),   # JP positive small, well below cusp (eps3_crit ≈ 0.12)
+    (0.9, +0.10),   # JP positive near-cusp, still smooth regime
+    (0.9, -0.5),    # JP moderate negative, smooth
+    (0.9, -1.0),    # JP large negative, well clear of pathology bound (-2.97)
+    (0.5, +0.5),    # intermediate-a anchor (coverage for intermediate-a code paths)
 ]
 
 print("# Johannsen-Psaltis equatorial photon orbit reference (M = 1)")

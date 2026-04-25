@@ -1,5 +1,8 @@
 package com.pranav.grrt.metric;
 
+import com.pranav.grrt.integrator.AdaptiveIntegrator;
+import com.pranav.grrt.integrator.DormandPrince45;
+
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -475,5 +478,210 @@ class JohannsenPsaltisMetricTest {
         assertEquals(1.0, g[2][2] / (r * r),       1e-10, "g_θθ / r² → 1");
         assertEquals(1.0, g[3][3] / (r * r * s2),  1e-10, "g_φφ / (r² sin²θ) → 1");
         assertEquals(0.0, g[0][3], 1e-5, "g_tφ → 0");
+    }
+
+    // ------------------------------------------------------------------
+    // Gate 6: photon-orbit radius matches the Python reference table
+    // ------------------------------------------------------------------
+
+    @Test
+    void photonOrbitRadiusMatchesPythonReference() {
+        // Reference table emitted by scripts/jp_photon_orbit_reference.py
+        // (Checkpoint 1 verified). Each row tests both prograde and
+        // retrograde branches at 1e-10 tolerance.
+        double[][] table = {
+                // a       eps3       r_pro             r_retro
+                { 0.0,    0.00,    3.000000000000,    3.000000000000 },
+                { 0.9,    0.00,    1.557854627423,    3.910267939103 },
+                { 0.9,   +0.05,    1.514929760605,    3.908849198460 },
+                { 0.9,   +0.10,    1.462809193707,    3.907433778017 },
+                { 0.9,   -0.50,    1.826038306483,    3.924636470894 },
+                { 0.9,   -1.00,    1.999521992008,    3.939329216438 },
+                { 0.5,   +0.50,    2.283440544835,    3.514510348998 },
+        };
+        double maxDiffPro = 0.0;
+        double maxDiffRetro = 0.0;
+        String worstRow = "";
+        for (double[] row : table) {
+            double a = row[0];
+            double eps3 = row[1];
+            double rRefPro = row[2];
+            double rRefRetro = row[3];
+            JohannsenPsaltisMetric jp = new JohannsenPsaltisMetric(1.0, a, eps3);
+            double rPro = jp.photonOrbitRadius(true);
+            double rRetro = jp.photonOrbitRadius(false);
+            double diffPro = Math.abs(rPro - rRefPro);
+            double diffRetro = Math.abs(rRetro - rRefRetro);
+            if (diffPro > maxDiffPro) {
+                maxDiffPro = diffPro;
+                worstRow = "(a=%g, eps3=%g, pro)".formatted(a, eps3);
+            }
+            if (diffRetro > maxDiffRetro) {
+                maxDiffRetro = diffRetro;
+                worstRow = "(a=%g, eps3=%g, retro)".formatted(a, eps3);
+            }
+            System.out.printf(
+                    "[3A gate 6 ref] (a=%+.2f, eps3=%+.4f): "
+                            + "r_pro_JP=%.12f vs ref=%.12f (Δ=%.3e), "
+                            + "r_retro_JP=%.12f vs ref=%.12f (Δ=%.3e)%n",
+                    a, eps3, rPro, rRefPro, diffPro, rRetro, rRefRetro, diffRetro);
+            assertEquals(rRefPro, rPro, 1e-10,
+                    "prograde mismatch at (a=%g, eps3=%g)".formatted(a, eps3));
+            assertEquals(rRefRetro, rRetro, 1e-10,
+                    "retrograde mismatch at (a=%g, eps3=%g)".formatted(a, eps3));
+        }
+        System.out.printf(
+                "[3A gate 6 ref] worst row: %s, max Δ_pro=%.3e, max Δ_retro=%.3e%n",
+                worstRow, maxDiffPro, maxDiffRetro);
+    }
+
+    // ------------------------------------------------------------------
+    // Gate 6 amendment 4: ISCO-path and photon-path equatorial derivative
+    // implementations agree at machine precision
+    // ------------------------------------------------------------------
+
+    @Test
+    void equatorialDerivativesAgreeAcrossPaths() {
+        // Three sample (r, a, eps3) points. Asserts that
+        // equatorialGDerivativesViaIscoPath and
+        // equatorialGDerivativesViaPhotonPath produce element-wise identical
+        // sextets {g_tt, g_tφ, g_φφ, ∂_r g_tt, ∂_r g_tφ, ∂_r g_φφ}
+        // to 1e-13 (or tighter; expect machine-epsilon-times-magnitude).
+        double[][] points = {
+                // r,    a,      eps3
+                { 5.0,   0.9,    0.0   },
+                { 3.0,   0.9,   +0.10  },
+                { 8.0,   0.5,   -0.5   },
+        };
+        double maxAbsResidual = 0.0;
+        String worstPoint = "";
+        int worstIdx = -1;
+        for (double[] p : points) {
+            double r = p[0];
+            double a = p[1];
+            double eps3 = p[2];
+            JohannsenPsaltisMetric jp = new JohannsenPsaltisMetric(1.0, a, eps3);
+            double[] iscoVals = jp.equatorialGDerivativesViaIscoPath(r);
+            double[] photonVals = jp.equatorialGDerivativesViaPhotonPath(r);
+            assertEquals(6, iscoVals.length, "ISCO path returns 6-element array");
+            assertEquals(6, photonVals.length, "photon path returns 6-element array");
+            double[] diffs = new double[6];
+            for (int i = 0; i < 6; i++) {
+                diffs[i] = Math.abs(iscoVals[i] - photonVals[i]);
+                if (diffs[i] > maxAbsResidual) {
+                    maxAbsResidual = diffs[i];
+                    worstPoint = "(r=%g, a=%g, eps3=%g)".formatted(r, a, eps3);
+                    worstIdx = i;
+                }
+                assertEquals(iscoVals[i], photonVals[i], 1e-13,
+                        "ISCO vs photon path differ at idx=%d (%s)".formatted(
+                                i, "(r=%g, a=%g, eps3=%g)".formatted(r, a, eps3)));
+            }
+            System.out.printf(
+                    "[3A gate 6 cross] (r=%.1f, a=%+.1f, eps3=%+.2f): "
+                            + "Δg_tt=%.3e Δg_tφ=%.3e Δg_φφ=%.3e "
+                            + "Δ∂g_tt=%.3e Δ∂g_tφ=%.3e Δ∂g_φφ=%.3e%n",
+                    r, a, eps3,
+                    diffs[0], diffs[1], diffs[2], diffs[3], diffs[4], diffs[5]);
+        }
+        String idxLabel = switch (worstIdx) {
+            case 0 -> "g_tt"; case 1 -> "g_tφ"; case 2 -> "g_φφ";
+            case 3 -> "∂_r g_tt"; case 4 -> "∂_r g_tφ"; case 5 -> "∂_r g_φφ";
+            default -> "?";
+        };
+        System.out.printf(
+                "[3A gate 6 cross] worst: %s component=%s, max |Δ|=%.3e%n",
+                worstPoint, idxLabel, maxAbsResidual);
+    }
+
+    // ------------------------------------------------------------------
+    // Gate 5: null-norm drift on a DP45 photon orbit in JP(0.9, +0.5)
+    // ------------------------------------------------------------------
+
+    @Test
+    void geodesicStaysOnLightConeUnderDp45_jp_a09_eps3_0p5() {
+        // §2.1: JP(M=1, a=0.9, ε₃=+0.5), DP45 atol=rtol=1e-10, initial h=1M.
+        // §2.2: equatorial inbound photon, r₀=50M, b=L/E=5.5M, with the
+        //        radicand safety check (§2.2 amendment 1).
+        // §2.3: drift |g_μν k^μ k^ν| / (k^t)² < 1e-8 over λ ∈ [0, 1000M].
+        JohannsenPsaltisMetric m = new JohannsenPsaltisMetric(1.0, 0.9, 0.5);
+
+        double r0 = 50.0;
+        double E  = 1.0;
+        double b  = 5.5;
+        double L  = b * E;
+        double[] x0 = new double[] { 0.0, r0, Math.PI / 2.0, 0.0 };
+        double[][] gmn = m.g(x0);
+        double[][] gi  = m.gInv(x0);
+
+        double kt = -E * gi[0][0] + L * gi[0][3];
+        double kp = -E * gi[0][3] + L * gi[3][3];
+        double R  = -(gmn[0][0] * kt * kt + 2.0 * gmn[0][3] * kt * kp
+                      + gmn[3][3] * kp * kp) / gmn[1][1];
+        if (R < 0.0) {
+            // §2.2 amendment 1: loud throw, never silent NaN propagation.
+            throw new IllegalStateException(
+                    "Radicand safety: r0=" + r0 + ", b=" + b + ", R=" + R);
+        }
+        double kr = -Math.sqrt(R);   // inward
+        double[] y0 = new double[] {
+                0.0, r0, Math.PI / 2.0, 0.0,
+                kt, kr, 0.0, kp,
+        };
+
+        // Initial null-norm exact to machine precision by construction
+        double initNullNorm = m.nullNorm(
+                new double[] { y0[0], y0[1], y0[2], y0[3] },
+                new double[] { y0[4], y0[5], y0[6], y0[7] });
+        assertEquals(0.0, initNullNorm, 1e-10, "initial state must be null");
+
+        DormandPrince45 dp = new DormandPrince45();
+        double[] y = y0.clone();
+        double[] yNext = new double[8];
+        double h = 1.0;
+        double atol = 1e-10;
+        double rtol = 1e-10;
+        int maxStepsTotal = 200_000;
+        int accepted = 0;
+        int rejected = 0;
+        double maxDrift = 0.0;
+        double accumLambda = 0.0;
+        double rMin = y[1];
+
+        while (accumLambda < 1000.0 && (accepted + rejected) < maxStepsTotal) {
+            AdaptiveIntegrator.StepStatus s =
+                    dp.adaptiveStep(m, y, h, atol, rtol, yNext);
+            if (s.accepted()) {
+                accepted++;
+                accumLambda += h;
+                System.arraycopy(yNext, 0, y, 0, 8);
+                double[] x = new double[] { y[0], y[1], y[2], y[3] };
+                double[] k = new double[] { y[4], y[5], y[6], y[7] };
+                double nn = m.nullNorm(x, k);
+                double drift = Math.abs(nn) / (k[0] * k[0]);
+                if (drift > maxDrift) {
+                    maxDrift = drift;
+                }
+                if (y[1] < rMin) {
+                    rMin = y[1];
+                }
+            } else {
+                rejected++;
+            }
+            h = s.hNext();
+        }
+
+        System.out.printf(
+                "[3A gate 5] JP(0.9, +0.5) λ→1000M: "
+                        + "accepted=%d, rejected=%d, "
+                        + "final λ=%.2f, r_min=%.4f, final r=%.4f, "
+                        + "max |g·k·k|/(k^t)² drift=%.3e%n",
+                accepted, rejected, accumLambda, rMin, y[1], maxDrift);
+
+        assertTrue(accumLambda >= 1000.0,
+                "integration stopped early at λ=" + accumLambda
+                        + " (accepted=" + accepted + ")");
+        assertTrue(maxDrift < 1e-8,
+                "null-norm drift " + maxDrift + " exceeds 1e-8 tolerance");
     }
 }

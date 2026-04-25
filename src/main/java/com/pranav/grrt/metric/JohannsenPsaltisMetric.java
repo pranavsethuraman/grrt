@@ -377,6 +377,242 @@ public final class JohannsenPsaltisMetric implements Metric {
     }
 
     // ------------------------------------------------------------------
+    // Equatorial photon-orbit radius (independent code path from eCircular)
+    // ------------------------------------------------------------------
+
+    /**
+     * Residual {@code F(r) = ∂_r g_tt + 2 ∂_r g_tφ ω + ∂_r g_φφ ω²} for
+     * the equatorial circular-null condition, evaluated on the prograde
+     * or retrograde branch of {@code ω(r)} from the null condition
+     * {@code g_tt + 2 g_tφ ω + g_φφ ω² = 0}. F vanishes at the photon-
+     * orbit radius.
+     *
+     * <p>Equatorial g and ∂_r g are written inline, INDEPENDENTLY of the
+     * expressions used in {@link #eCircular} (the ISCO helper). Same
+     * math, separate code paths — see
+     * {@code docs/phase-3a-gates-5-6.md} §3.4 amendment 4. The
+     * package-private {@link #equatorialGDerivativesViaPhotonPath}
+     * mirrors this method's expressions line-for-line for the
+     * cross-path agreement test.
+     *
+     * @throws IllegalStateException if the null discriminant is
+     *         negative (no real ω at this r) or {@code g_φφ ≤ 0}
+     */
+    private double residualPhotonOrbit(double r, boolean prograde) {
+        // Equatorial: Σ = r²; h = ε₃ M³/r³; h' = -3 ε₃ M³/r⁴.
+        final double r2 = r * r;
+        final double r3 = r2 * r;
+        final double r4 = r3 * r;
+        final double M3 = M * M * M;
+        final double Ma = M * a;
+        final double Ma2 = Ma * a;
+        final double e = eps3;
+
+        final double oneMinusTwoMOverR = 1.0 - 2.0 * M / r;
+        final double twoMOverR2 = 2.0 * M / r2;
+        final double minus3eM3OverR4 = -3.0 * e * M3 / r4;
+        final double eM3OverR3 = e * M3 / r3;
+        final double onePlusH_ = 1.0 + eM3OverR3;
+
+        final double gtt_ = -oneMinusTwoMOverR * onePlusH_;
+        final double gtp_ = -(2.0 * Ma / r) * onePlusH_;
+        final double gpp_ = (r2 + a * a) + (2.0 * Ma2 / r) * onePlusH_;
+
+        final double dgtt_ = -twoMOverR2 * onePlusH_ - oneMinusTwoMOverR * minus3eM3OverR4;
+        final double dgtp_ = (2.0 * Ma / r2) * onePlusH_ - (2.0 * Ma / r) * minus3eM3OverR4;
+        final double dgpp_ = 2.0 * r + 2.0 * Ma2 * (minus3eM3OverR4 / r - onePlusH_ / r2);
+
+        final double disc = gtp_ * gtp_ - gtt_ * gpp_;
+        if (disc < 0.0) {
+            throw new IllegalStateException(
+                    "Null discriminant negative at r = " + r
+                    + " (a = " + a + ", eps3 = " + eps3 + "): disc = " + disc);
+        }
+        if (gpp_ <= 0.0) {
+            throw new IllegalStateException(
+                    "g_φφ non-positive at r = " + r + ": " + gpp_);
+        }
+        final double sgn = prograde ? +1.0 : -1.0;
+        final double omega = (-gtp_ + sgn * Math.sqrt(disc)) / gpp_;
+        return dgtt_ + 2.0 * dgtp_ * omega + dgpp_ * omega * omega;
+    }
+
+    /**
+     * Equatorial photon-orbit radius for the prograde or retrograde
+     * branch.
+     *
+     * <p>Solves {@code F(r) = 0} where F is the combined null + circular
+     * null-orbit residual evaluated by {@link #residualPhotonOrbit}.
+     * The combined system does not reduce to a low-degree polynomial
+     * for the JP metric (the {@code h(r,θ) = ε₃ M³ r/Σ²} deformation
+     * introduces nontrivial r-dependence beyond Kerr's quartic), so we
+     * locate the root numerically:
+     *
+     * <ol>
+     *   <li>Scan a 500-point linear grid on
+     *       {@code [1.001 r₊, 10 M]} for points where the null
+     *       discriminant is non-negative (i.e., the ω-branch is real).</li>
+     *   <li>Identify the OUTERMOST sign change of F(r) on the valid grid.</li>
+     *   <li>Bisect the bracketing interval to relative tolerance
+     *       {@code 1e-12} or 100 iterations.</li>
+     * </ol>
+     *
+     * <p><b>Why a grid scan, not the iscoRadius walk-from-1.1·r₊
+     * pattern.</b> For high-spin prograde photon orbits the simple-walk
+     * start point {@code 1.1 r₊} can land just OUTSIDE
+     * {@code r_photon} (e.g., for Kerr {@code a = 0.9}: {@code r_photon
+     * ≈ 1.558 M}, {@code 1.1 r₊ ≈ 1.580 M}), so the bisection bracket
+     * {@code [1.1 r₊, 10 M]} contains no F sign change and the bisection
+     * fails. The grid scan is robust for both branches across the
+     * approved sweep range. This matches the pattern used in
+     * {@code scripts/jp_photon_orbit_reference.py}.
+     *
+     * <p><b>Implementation independence.</b> The equatorial g and ∂_r g
+     * expressions inside {@link #residualPhotonOrbit} are written
+     * independently of those used inside {@link #eCircular}. The
+     * package-private helpers
+     * {@link #equatorialGDerivativesViaIscoPath} and
+     * {@link #equatorialGDerivativesViaPhotonPath} expose the two
+     * paths' expressions for the cross-path agreement test (see
+     * {@code docs/phase-3a-gates-5-6.md} §3.4 amendment 4).
+     *
+     * @param prograde true for the + branch of ω (co-rotating with spin
+     *                 at large r); false for retrograde
+     * @return r_photon in geometrized units
+     * @throws IllegalStateException if no F sign change is found in
+     *         the search interval (the Kerr-continuation orbit does not
+     *         exist above the Kerr horizon for this (a, ε₃))
+     */
+    public double photonOrbitRadius(boolean prograde) {
+        final int N = 500;
+        final double rLoStart = 1.001 * horizonRadius();
+        final double rHi = 10.0 * M;
+
+        double[] rs = new double[N];
+        double[] fs = new double[N];
+        int valid = 0;
+        for (int i = 0; i < N; i++) {
+            double r = rLoStart + (rHi - rLoStart) * i / (N - 1);
+            double f;
+            try {
+                f = residualPhotonOrbit(r, prograde);
+            } catch (IllegalStateException ex) {
+                continue;
+            }
+            if (Double.isFinite(f)) {
+                rs[valid] = r;
+                fs[valid] = f;
+                valid++;
+            }
+        }
+        if (valid < 2) {
+            throw new IllegalStateException(
+                    "photonOrbitRadius: insufficient valid grid points (a = "
+                    + a + ", eps3 = " + eps3 + ", prograde = " + prograde + ")");
+        }
+
+        int bestI = -1;
+        for (int i = 0; i < valid - 1; i++) {
+            if (fs[i] * fs[i + 1] < 0.0) {
+                bestI = i;
+            }
+        }
+        if (bestI < 0) {
+            throw new IllegalStateException(
+                    "photonOrbitRadius: no F sign change in [" + rLoStart + ", "
+                    + rHi + "] (a = " + a + ", eps3 = " + eps3
+                    + ", prograde = " + prograde
+                    + ") — Kerr-continuation orbit may not exist; see "
+                    + "docs/jp-parameter-space-notes.md");
+        }
+
+        double rLo = rs[bestI];
+        double rHi2 = rs[bestI + 1];
+        double fLo = fs[bestI];
+        for (int iter = 0; iter < 100; iter++) {
+            double rMid = 0.5 * (rLo + rHi2);
+            double fMid = residualPhotonOrbit(rMid, prograde);
+            if (Math.signum(fMid) == Math.signum(fLo)) {
+                rLo = rMid; fLo = fMid;
+            } else {
+                rHi2 = rMid;
+            }
+            if (rHi2 - rLo < 1e-12 * Math.abs(rMid)) return rMid;
+        }
+        return 0.5 * (rLo + rHi2);
+    }
+
+    // ------------------------------------------------------------------
+    // Test-visibility hooks: package-private equatorial-derivative paths
+    // ------------------------------------------------------------------
+
+    /**
+     * Returns {@code {g_tt, g_tφ, g_φφ, ∂_r g_tt, ∂_r g_tφ, ∂_r g_φφ}}
+     * on the equator (θ = π/2) computed via the same expressions used
+     * inside {@link #eCircular} (the ISCO-helper code path).
+     *
+     * <p>Package-private; exposed solely so the test
+     * {@code equatorialDerivativesAgreeAcrossPaths} can verify that the
+     * ISCO and photon-orbit code paths agree at machine precision. See
+     * {@code docs/phase-3a-gates-5-6.md} §3.4 amendment 4. Production
+     * code paths ({@link #eCircular}, {@link #residualPhotonOrbit}) call
+     * their own internal inline expressions, NOT this helper.
+     */
+    double[] equatorialGDerivativesViaIscoPath(double r) {
+        // Mirrors the inline expressions inside eCircular line-for-line.
+        double h = eps3 * M * M * M / (r * r * r);
+        double hPrime = -3.0 * eps3 * M * M * M / (r * r * r * r);
+        double onePlusH = 1.0 + h;
+        double twoMOverR = 2.0 * M / r;
+        double twoMaOverR = 2.0 * M * a / r;
+        double gtt = -(1.0 - twoMOverR) * onePlusH;
+        double gtp = -twoMaOverR * onePlusH;
+        double gpp = (r * r + a * a) + (2.0 * M * a * a / r) * onePlusH;
+        double dgtt = -(2.0 * M / (r * r)) * onePlusH - (1.0 - twoMOverR) * hPrime;
+        double dgtp = (2.0 * M * a / (r * r)) * onePlusH - twoMaOverR * hPrime;
+        double dgpp = 2.0 * r + 2.0 * M * a * a * (hPrime / r - onePlusH / (r * r));
+        return new double[] { gtt, gtp, gpp, dgtt, dgtp, dgpp };
+    }
+
+    /**
+     * Returns {@code {g_tt, g_tφ, g_φφ, ∂_r g_tt, ∂_r g_tφ, ∂_r g_φφ}}
+     * on the equator (θ = π/2) computed via the same expressions used
+     * inside {@link #residualPhotonOrbit} (the photon-orbit code path).
+     *
+     * <p>Package-private; same role as
+     * {@link #equatorialGDerivativesViaIscoPath} but for the photon-
+     * orbit code path. Used by
+     * {@code equatorialDerivativesAgreeAcrossPaths} for the cross-path
+     * comparison.
+     */
+    double[] equatorialGDerivativesViaPhotonPath(double r) {
+        // Mirrors the inline expressions inside residualPhotonOrbit.
+        final double r2 = r * r;
+        final double r3 = r2 * r;
+        final double r4 = r3 * r;
+        final double M3 = M * M * M;
+        final double Ma = M * a;
+        final double Ma2 = Ma * a;
+        final double e = eps3;
+
+        final double oneMinusTwoMOverR = 1.0 - 2.0 * M / r;
+        final double twoMOverR2 = 2.0 * M / r2;
+        final double minus3eM3OverR4 = -3.0 * e * M3 / r4;
+        final double eM3OverR3 = e * M3 / r3;
+        final double onePlusH_ = 1.0 + eM3OverR3;
+
+        final double gtt_ = -oneMinusTwoMOverR * onePlusH_;
+        final double gtp_ = -(2.0 * Ma / r) * onePlusH_;
+        final double gpp_ = (r2 + a * a) + (2.0 * Ma2 / r) * onePlusH_;
+
+        final double dgtt_ = -twoMOverR2 * onePlusH_ - oneMinusTwoMOverR * minus3eM3OverR4;
+        final double dgtp_ = (2.0 * Ma / r2) * onePlusH_ - (2.0 * Ma / r) * minus3eM3OverR4;
+        final double dgpp_ = 2.0 * r + 2.0 * Ma2 * (minus3eM3OverR4 / r - onePlusH_ / r2);
+
+        return new double[] { gtt_, gtp_, gpp_, dgtt_, dgtp_, dgpp_ };
+    }
+
+    // ------------------------------------------------------------------
     // Metric tensor and inverse
     // ------------------------------------------------------------------
 

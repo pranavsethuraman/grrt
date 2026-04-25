@@ -42,9 +42,11 @@ new standalone Python script.
 ### 2.1 Setup
 
 - Metric: `JohannsenPsaltisMetric(M=1, a=0.9, ε₃=+0.5)`.
-- Integrator: `DormandPrince45` with default tolerances (reltol 1e-8,
-  abstol 1e-10 per Phase 2 conventions — to confirm from existing
-  DP45 test defaults before coding).
+- Integrator: `DormandPrince45` with `atol = 1e-10`, `rtol = 1e-10`,
+  initial step `h = 1.0 M`. Sourced from
+  `DormandPrince45KerrTest.kerrDeflectingPhotonConservationUnderLongIntegration`
+  (B3(d), the tightest tolerances in the existing Phase 2 suite, used
+  for long-integration energy/angular-momentum conservation tests).
 - Initial position: `r₀ = 50 M`, `θ = π/2`, `φ = 0`, `t = 0`.
 - Initial momentum: equatorial photon with impact parameter
   `b = L/E = 5.5 M`, inward radial component.
@@ -224,9 +226,16 @@ was revised after the transition discovery documented in
     caught by `equatorialDerivativesAgreeAcrossPaths` rather than
     silently propagating. Javadoc cross-references `eCircular` and
     this sub-plan.
-  - Bracket walk identical in structure to `iscoRadius` (start at
-    `1.1 r₊`, ×1.05 until null discriminant is real), then bisect
-    `F(r) = 0` on `[rLo, 10 M]`.
+  - **Bracket: 500-point linear grid scan on `[1.001 r₊, 10 M]` for
+    points where the null discriminant is non-negative; identify the
+    OUTERMOST sign change of `F(r)` on the valid grid; bisect that
+    bracket to relative tolerance `1e-12` or 100 iterations.** The
+    iscoRadius walk-from-`1.1 r₊` pattern initially proposed for
+    this method does NOT work for high-spin prograde orbits: at
+    Kerr `a = 0.9`, `r_photon ≈ 1.558 M` while `1.1 r₊ ≈ 1.580 M`,
+    so the bracket `[1.580, 10]` contains no sign change and
+    bisection fails. The grid-scan approach matches the proven
+    logic in `scripts/jp_photon_orbit_reference.py`.
 - Two test methods in `JohannsenPsaltisMetricTest`:
   - `photonOrbitRadiusMatchesPythonReference`. Hardcodes the
     seven-row reference table as `double[][]` (the Python script's
