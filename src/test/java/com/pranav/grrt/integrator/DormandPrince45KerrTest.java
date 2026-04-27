@@ -179,6 +179,110 @@ class DormandPrince45KerrTest {
     }
 
     // ------------------------------------------------------------------
+    // Phase 3B gate 5: DP45 dense output at θ = 0.5 vs half-step direct
+    // ------------------------------------------------------------------
+
+    @Test
+    void denseOutputAtMidStepMatchesHalfStepDirect_kerrA09() {
+        // Phase 3B plan §4 gate 5: DP45 5th-order continuous extension
+        // at the midpoint of an accepted step matches a direct half-step
+        // propagation to 1e-8 on a Kerr photon orbit. Setup mirrors B3d
+        // (a deflecting Kerr photon at r0=50 M, b=5.5 M, atol=rtol=1e-10).
+        KerrMetric m = new KerrMetric(1.0, 0.9);
+        double r0 = 50.0;
+        double E  = 1.0;
+        double L  = 5.5 * E;
+        double[] y0 = equatorialInboundNull(m, r0, E, L);
+        double n0 = m.nullNorm(slice(y0, 0, 4), slice(y0, 4, 4));
+        assertEquals(0.0, n0, 1e-10, "initial state must be null");
+
+        DormandPrince45 dp = new DormandPrince45();
+        double[] yNext = new double[8];
+        double atol = 1e-10, rtol = 1e-10;
+
+        // --- Take one accepted step from y0. Loop on rejection (h shrinks
+        // adaptively; safety cap at 5 retries since the per-step error at
+        // r=50 M, h~1 M, atol=1e-10 should comfortably accept).
+        double hUsed = 1.0;
+        boolean accepted = false;
+        AdaptiveIntegrator.StepStatus s = null;
+        for (int retry = 0; retry < 5 && !accepted; retry++) {
+            s = dp.adaptiveStep(m, y0, hUsed, atol, rtol, yNext);
+            if (s.accepted()) {
+                accepted = true;
+            } else {
+                hUsed = s.hNext();
+            }
+        }
+        assertTrue(accepted, "seed step did not accept within 5 retries");
+        double hAcc = hUsed;
+
+        double[] midInterp = new double[8];
+        dp.interpolate(0.5, midInterp);
+
+        // --- Half-step direct: reset and propagate from y0 with hAcc/2.
+        // At atol=rtol=1e-10, halving the step reduces local err by ~32x,
+        // so this must accept on the first try.
+        dp.resetState();
+        double[] yHalfDirect = new double[8];
+        double hHalf = hAcc / 2.0;
+        AdaptiveIntegrator.StepStatus s2 =
+                dp.adaptiveStep(m, y0, hHalf, atol, rtol, yHalfDirect);
+        assertTrue(s2.accepted(),
+                "half-step (hHalf=" + hHalf + ") should accept on first try"
+                        + " at atol=" + atol);
+
+        double maxAbsDiff = 0.0;
+        int worstIdx = -1;
+        for (int i = 0; i < 8; i++) {
+            double diff = Math.abs(midInterp[i] - yHalfDirect[i]);
+            if (diff > maxAbsDiff) {
+                maxAbsDiff = diff;
+                worstIdx = i;
+            }
+        }
+        System.out.println("[gate5] h_accepted = " + hAcc);
+        System.out.println("[gate5] worst |interp - halfDirect| = "
+                + maxAbsDiff + " at index " + worstIdx);
+
+        for (int i = 0; i < 8; i++) {
+            double diff = Math.abs(midInterp[i] - yHalfDirect[i]);
+            assertTrue(diff < 1e-8,
+                    "component " + i + ": interp=" + midInterp[i]
+                            + " halfDirect=" + yHalfDirect[i]
+                            + " diff=" + diff);
+        }
+    }
+
+    @Test
+    void interpolateThrowsBeforeFirstAcceptedStep() {
+        DormandPrince45 dp = new DormandPrince45();
+        double[] out = new double[8];
+        assertThrows(IllegalStateException.class,
+                () -> dp.interpolate(0.5, out));
+    }
+
+    @Test
+    void interpolateRejectsBadTheta() {
+        KerrMetric m = new KerrMetric(1.0, 0.9);
+        double[] y0 = equatorialInboundNull(m, 50.0, 1.0, 5.5);
+        DormandPrince45 dp = new DormandPrince45();
+        double[] yNext = new double[8];
+        AdaptiveIntegrator.StepStatus s =
+                dp.adaptiveStep(m, y0, 1.0, 1e-10, 1e-10, yNext);
+        assertTrue(s.accepted(), "seed step must accept");
+        double[] out = new double[8];
+        assertThrows(IllegalArgumentException.class,
+                () -> dp.interpolate(-0.1, out));
+        assertThrows(IllegalArgumentException.class,
+                () -> dp.interpolate(1.1, out));
+        assertThrows(IllegalArgumentException.class,
+                () -> dp.interpolate(Double.NaN, out));
+        assertThrows(IllegalArgumentException.class,
+                () -> dp.interpolate(0.5, new double[7]));
+    }
+
+    // ------------------------------------------------------------------
     // Helpers
     // ------------------------------------------------------------------
 

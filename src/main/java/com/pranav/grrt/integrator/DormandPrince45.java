@@ -66,18 +66,41 @@ import com.pranav.grrt.metric.Metric;
  * {@code h_new = h * safety * err^(-1/5)} to shrink more aggressively,
  * and FSAL is invalidated (next k1 is recomputed from {@code y}).
  *
+ * <h2>Dense output (continuous extension)</h2>
+ *
+ * <p>{@link #interpolate(double, double[])} returns the integrator's
+ * 5th-order Hermite-style continuous extension over the most recently
+ * <i>accepted</i> step, parameterized by θ ∈ [0, 1] where θ = 0
+ * corresponds to the start of the step and θ = 1 to its end. The
+ * continuous extension is the Dormand-Prince formula given by
+ * Hairer-Nørsett-Wanner (1993) and used in Hairer's reference
+ * Fortran/C code {@code dopri5.c} (function {@code contd5}). It
+ * achieves global O(h⁵) accuracy on the interpolant — matching the
+ * discrete-step order — using only the seven existing stage values
+ * {@code k_1..k_7}. No additional RHS evaluation is required.
+ *
+ * <p>The constants {@code D1, D3, D4, D5, D6, D7} below are exact
+ * rational coefficients lifted verbatim from Hairer's reference code.
+ *
+ * <p>Phase 3B.1 wires this method through the
+ * {@code DormandPrince45Test.kerrInterpolateMatchesHalfStepDirect}
+ * gate at 1e-8 mid-step accuracy. Phase 3B.2 uses it in
+ * {@code AdaptiveRayTracer} for disk-crossing bisection.
+ *
  * <h2>Thread-safety</h2>
  *
  * <p>This integrator holds per-step scratch buffers plus persistent FSAL
- * {@code k7} and controller {@code err_prev}, and is <b>not</b> thread-safe.
- * Construct one instance per worker thread.
+ * {@code k7}, controller {@code err_prev}, and dense-output state
+ * ({@code yPrev}, {@code yNext}, {@code hAccepted}, {@code denseValid}),
+ * and is <b>not</b> thread-safe. Construct one instance per worker
+ * thread.
  *
  * <h2>FSAL contract</h2>
  *
  * <p>FSAL is valid only when the caller loops in the standard pattern
  * (pass the previously-accepted output as the next {@code y}). If the
  * caller restarts from a different state (e.g. between unrelated ray
- * traces), call {@link #resetFsal()} first to avoid reusing a stale k7.
+ * traces), call {@link #resetState()} first to avoid reusing a stale k7.
  */
 public final class DormandPrince45 implements AdaptiveIntegrator {
 
@@ -141,6 +164,27 @@ public final class DormandPrince45 implements AdaptiveIntegrator {
     static final double C6 = 1.0;
     static final double C7 = 1.0;
 
+    // --- Dense-output ("contd5") coefficients from Hairer-Nørsett-Wanner
+    //     (1993), implemented as in Hairer's reference Fortran/C code
+    //     (dopri5.f / dopri5.c, function contd5). The formula is
+    //
+    //       y_dense(θ) = rcont1 + θ ( rcont2 + (1−θ)(rcont3 + θ(rcont4 + (1−θ) rcont5)) )
+    //
+    //     with
+    //
+    //       rcont1 = y_n
+    //       rcont2 = y_{n+1} − y_n
+    //       rcont3 = h k_1 − rcont2
+    //       rcont4 = rcont2 − h k_7 − rcont3
+    //       rcont5 = h ( D1 k_1 + D3 k_3 + D4 k_4 + D5 k_5 + D6 k_6 + D7 k_7 )
+
+    static final double D1 = -12715105075.0 / 11282082432.0;
+    static final double D3 =   87487479700.0 / 32700410799.0;
+    static final double D4 =  -10690763975.0 /  1880347072.0;
+    static final double D5 =  701980252875.0 / 199316789632.0;
+    static final double D6 =   -1453857185.0 /    822651844.0;
+    static final double D7 =      69997945.0 /     29380423.0;
+
     // --- PI controller constants.
     static final double SAFETY     = 0.9;
     static final double ALPHA      = 0.7 / 5.0;    // 0.14
@@ -162,6 +206,18 @@ public final class DormandPrince45 implements AdaptiveIntegrator {
     private final double[] xBuf = new double[4];
     private final double[] kBuf = new double[4];
     private final double[] accel = new double[4];
+
+    // --- Dense-output persistent state.
+    //
+    // Populated only on accepted steps. yPrev = y_n, yNext = y_{n+1},
+    // hAccepted = the propagating h that was accepted. denseValid is
+    // false until the first accepted step, after a rejection, or after
+    // resetState().
+
+    private final double[] yPrev = new double[8];
+    private final double[] yNext = new double[8];
+    private double hAccepted = 0.0;
+    private boolean denseValid = false;
 
     private final double hMin;
     private final double hMax;
@@ -189,15 +245,16 @@ public final class DormandPrince45 implements AdaptiveIntegrator {
     }
 
     /**
-     * Invalidate the stored FSAL k7 and reset the PI controller's
-     * previous-error memory. Call this when restarting integration from
-     * a state unrelated to the previously-accepted output (e.g. between
-     * independent ray traces, or after an axis-reflection jump in the
-     * renderer loop).
+     * Invalidate the stored FSAL k7, the dense-output buffers, and the
+     * PI controller's previous-error memory. Call this when restarting
+     * integration from a state unrelated to the previously-accepted
+     * output (e.g. between independent ray traces, or after an
+     * axis-reflection jump in the renderer loop).
      */
     @Override
     public void resetState() {
         fsalValid = false;
+        denseValid = false;
         errPrev = 1.0;
     }
 
@@ -214,6 +271,12 @@ public final class DormandPrince45 implements AdaptiveIntegrator {
         if (hTry == 0.0 || !Double.isFinite(hTry)) {
             throw new IllegalArgumentException("hTry must be finite and nonzero: " + hTry);
         }
+
+        // Snapshot y_n for dense output BEFORE the step is propagated.
+        // Cheap (System.arraycopy is allocation-free); harmless if the
+        // step is later rejected — denseValid gates whether yPrev is
+        // meaningful.
+        System.arraycopy(y, 0, yPrev, 0, 8);
 
         // Clamp input hTry magnitude to [hMin, hMax], preserving sign.
         double h = clampStep(hTry);
@@ -275,6 +338,11 @@ public final class DormandPrince45 implements AdaptiveIntegrator {
             System.arraycopy(yTmp, 0, out, 0, 8);
             fsalValid = true;
 
+            // Persist dense-output state for this accepted step.
+            System.arraycopy(yTmp, 0, yNext, 0, 8);
+            hAccepted = h;
+            denseValid = true;
+
             double factor = SAFETY
                     * Math.pow(err,     -ALPHA)
                     * Math.pow(errPrev,  BETA);
@@ -285,14 +353,66 @@ public final class DormandPrince45 implements AdaptiveIntegrator {
             return new StepStatus(true, hNew, err);
         } else {
             // Rejected: fall back to pure I (no β term) for a firmer shrink,
-            // cap growth at 1 (never grow on rejection), invalidate FSAL.
+            // cap growth at 1 (never grow on rejection), invalidate FSAL,
+            // and invalidate dense output (the buffered yNext/hAccepted
+            // belong to whatever previous accepted step the user holds).
             fsalValid = false;
+            denseValid = false;
 
             double factor = SAFETY * Math.pow(err, -1.0 / 5.0);
             factor = Math.max(MIN_GROWTH, Math.min(1.0, factor));
             double hNew = clampStep(h * factor);
 
             return new StepStatus(false, hNew, err);
+        }
+    }
+
+    /**
+     * Continuous extension of the most recently accepted step,
+     * evaluated at parameter θ ∈ [0, 1]. θ = 0 returns y_n
+     * (the start of the step); θ = 1 returns y_{n+1} (the end).
+     * Globally O(h⁵) accurate per Hairer-Nørsett-Wanner (1993)
+     * Eq. II.6.20 / Hairer's {@code contd5} reference implementation.
+     *
+     * <p>No additional RHS evaluation is performed; the formula uses
+     * only the seven stages {@code k_1..k_7} stored from the last
+     * accepted step.
+     *
+     * @param theta interpolation parameter in [0, 1]
+     * @param out   8-vector buffer; overwritten with y(θ)
+     * @throws IllegalStateException    if no step has been accepted, or
+     *                                  if the most recent step was
+     *                                  rejected, or after
+     *                                  {@link #resetState()}.
+     * @throws IllegalArgumentException if {@code theta} is outside
+     *                                  [0, 1] or {@code out.length != 8}
+     */
+    public void interpolate(double theta, double[] out) {
+        if (out == null || out.length != 8) {
+            throw new IllegalArgumentException("out must have length 8");
+        }
+        if (!denseValid) {
+            throw new IllegalStateException(
+                    "no accepted step available for dense output");
+        }
+        if (!(theta >= 0.0) || !(theta <= 1.0) || !Double.isFinite(theta)) {
+            throw new IllegalArgumentException(
+                    "theta must be in [0, 1]: " + theta);
+        }
+        double h = hAccepted;
+        double oneMinusTheta = 1.0 - theta;
+        for (int i = 0; i < 8; i++) {
+            double rcont1 = yPrev[i];
+            double rcont2 = yNext[i] - yPrev[i];
+            double rcont3 = h * k1[i] - rcont2;
+            double rcont4 = rcont2 - h * k7[i] - rcont3;
+            double rcont5 = h * (D1 * k1[i] + D3 * k3[i] + D4 * k4[i]
+                               + D5 * k5[i] + D6 * k6[i] + D7 * k7[i]);
+            out[i] = rcont1
+                    + theta * (rcont2
+                    + oneMinusTheta * (rcont3
+                    + theta * (rcont4
+                    + oneMinusTheta * rcont5)));
         }
     }
 

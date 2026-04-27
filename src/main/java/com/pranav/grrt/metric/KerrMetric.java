@@ -133,6 +133,7 @@ public final class KerrMetric implements Metric {
      * @param prograde true for co-rotating ISCO, false for counter-rotating
      * @return ISCO radius in geometrized units
      */
+    @Override
     public double iscoRadius(boolean prograde) {
         double chi = a / M;
         double chi2 = chi * chi;

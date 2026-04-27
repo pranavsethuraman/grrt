@@ -252,6 +252,7 @@ public final class JohannsenPsaltisMetric implements Metric {
      * @return ISCO radius in geometrized units
      * @throws IllegalStateException if the bracket fails
      */
+    @Override
     public double iscoRadius(boolean prograde) {
         double rHi = 20.0 * M;
         double rLo = 1.1 * horizonRadius();

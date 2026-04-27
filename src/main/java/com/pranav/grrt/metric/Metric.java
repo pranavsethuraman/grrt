@@ -20,6 +20,31 @@ public interface Metric {
     double horizonRadius();
 
     /**
+     * Innermost stable circular orbit (ISCO) radius for equatorial
+     * timelike orbits in geometrized units.
+     *
+     * <p>Default: throws {@link UnsupportedOperationException}. Concrete
+     * metrics that admit an equatorial ISCO ({@link KerrMetric},
+     * {@link JohannsenPsaltisMetric}) override. Metrics without one
+     * ({@link MinkowskiMetric}, and {@link SchwarzschildMetric} which
+     * does not currently expose a closed-form ISCO) inherit the
+     * throwing default.
+     *
+     * <p>Used by the disk model in {@code com.pranav.grrt.disk} to
+     * compute the inner edge of a Novikov-Thorne disk.
+     *
+     * @param prograde true for the prograde branch (co-rotating with
+     *                 spin); false for retrograde
+     * @return the ISCO radius in geometrized units
+     * @throws UnsupportedOperationException if the metric does not
+     *                                       implement an ISCO formula
+     */
+    default double iscoRadius(boolean prograde) {
+        throw new UnsupportedOperationException(
+                "metric does not support iscoRadius");
+    }
+
+    /**
      * Metric tensor g_{μν} at position x.
      *
      * @param x position 4-vector (t, r, θ, φ)
