@@ -1,9 +1,16 @@
 package com.pranav.grrt.renderer;
 
 import com.pranav.grrt.camera.Camera;
+import com.pranav.grrt.disk.Disk;
+import com.pranav.grrt.disk.DiskEmissionShader;
+import com.pranav.grrt.disk.NovikovThorneDisk;
+import com.pranav.grrt.integrator.DormandPrince45;
 import com.pranav.grrt.integrator.RK4;
+import com.pranav.grrt.metric.KerrMetric;
 import com.pranav.grrt.metric.SchwarzschildMetric;
 import org.junit.jupiter.api.Test;
+
+import java.util.function.Supplier;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -168,6 +175,80 @@ class RendererTest {
         // Both classes should be represented.
         assertTrue(zeros > 0, "no captured pixels");
         assertTrue(ones > 0,  "no escaped pixels");
+    }
+
+    // ---------------------------------------------------------------
+    // Phase 3B gate 3: face-on Schwarzschild disk at 256² should
+    // produce a centroid-symmetric annulus.
+    //
+    // Schwarzschild via KerrMetric(M, 0). Inclination is set to 1e-4
+    // rad (effectively face-on); θ = 0 exactly is a Boyer-Lindquist
+    // coordinate singularity in Camera (1/sin(θ) tetrad factor) and
+    // cannot be used directly. The 1e-4 rad offset shifts the centroid
+    // by ~r_avg · sin(i) ≈ 13 · 1e-4 = 1.3e-3 M, which is ~0.007 px at
+    // our pixel scale — well below the 0.5 px tolerance.
+    //
+    // Disk r ∈ [r_ISCO + 1e-3, 20 M]; r_ISCO = 6 M for Schwarzschild.
+    // ---------------------------------------------------------------
+
+    @Test
+    void faceOnSchwarzschildDiskCentroidIsNearOrigin() {
+        double M = 1.0;
+        double rObs = 100.0;
+        double inclination = 1.0e-4;
+        int W = 256, H = 256;
+        double fov = 0.5;
+
+        KerrMetric metric = new KerrMetric(M, 0.0);   // Schwarzschild via Kerr a=0
+        Disk disk = new NovikovThorneDisk(metric, 0.0, 20.0, 1.0e-3);
+        DiskEmissionShader shader = new DiskEmissionShader(disk, metric);
+
+        // RenderConfig fields hNear/hFar/rTransition are ignored by
+        // AdaptiveRayTracer; they only affect FixedStepRayTracer.
+        RenderConfig config = new RenderConfig(
+                0.01, 2.0 * rObs,
+                0.01, 0.5, 10.0,
+                1_000_000,
+                shader);
+
+        Camera cam = new Camera(metric, rObs, inclination, W, H, fov);
+
+        double atol = 1.0e-8, rtol = 1.0e-8, hInit = 1.0;
+        Supplier<RayTracer> factory = () -> new AdaptiveRayTracer(
+                new DormandPrince45(), metric, config, atol, rtol, hInit, disk);
+
+        Renderer r = Renderer.withRayTracer(cam, metric, factory, config);
+        float[][] img = r.render();
+
+        // Centroid of pixels with positive intensity (= disk hits).
+        double sumX = 0.0, sumY = 0.0;
+        int hitCount = 0;
+        for (int j = 0; j < H; j++) {
+            for (int i = 0; i < W; i++) {
+                if (img[j][i] > 0.0f) {
+                    sumX += i;
+                    sumY += j;
+                    hitCount++;
+                }
+            }
+        }
+        assertTrue(hitCount > 1000,
+                "expected substantial disk-hit count for the face-on annulus; got " + hitCount);
+
+        double cx = sumX / hitCount;
+        double cy = sumY / hitCount;
+        double centerX = (W - 1) / 2.0;   // 127.5 for W=256
+        double centerY = (H - 1) / 2.0;
+        double dx = cx - centerX;
+        double dy = cy - centerY;
+
+        System.out.println("[gate3] face-on Schwarzschild disk render");
+        System.out.println("[gate3] hit pixel count = " + hitCount);
+        System.out.println("[gate3] centroid = (" + cx + ", " + cy + ")");
+        System.out.println("[gate3] |Δ| from image center = (" + dx + ", " + dy + ")");
+
+        assertTrue(Math.abs(dx) < 0.5, "centroid X off-center: " + dx);
+        assertTrue(Math.abs(dy) < 0.5, "centroid Y off-center: " + dy);
     }
 
     // ---------------------------------------------------------------

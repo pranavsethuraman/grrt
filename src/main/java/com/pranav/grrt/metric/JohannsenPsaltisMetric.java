@@ -212,6 +212,35 @@ public final class JohannsenPsaltisMetric implements Metric {
     }
 
     /**
+     * Position-dependent JP horizon test: {@code Δ + a² h sin²θ ≤ tol}.
+     *
+     * <p>The true JP event horizon is the outermost root of
+     * {@code Δ + a² h sin²θ = 0}. For {@code ε₃ > 0} this surface sits
+     * inside the polar-axis Kerr horizon on the equator (h_eq &gt; 0
+     * shrinks the radicand); for {@code ε₃ < 0} it sits outside.
+     * {@link #horizonRadius()} returns the polar-axis value as a single
+     * scalar; the renderer uses this θ-aware predicate for accurate
+     * ray termination per {@code docs/phase-3b-plan.md} §2.4.
+     *
+     * <p>The current method is independent of {@code horizonRadius()}
+     * and does not call it; it computes Δ and h directly from
+     * {@code (r, θ)}.
+     *
+     * @param x   8- or 4-state vector; only x[1] (r) and x[2] (θ) are read
+     * @param tol non-negative tolerance in geometrized units
+     */
+    @Override
+    public boolean isInsideHorizon(double[] x, double tol) {
+        double r = x[1];
+        double cosT = Math.cos(x[2]);
+        double sinT = Math.sin(x[2]);
+        double sigma = r * r + a * a * cosT * cosT;
+        double delta = r * r - 2.0 * M * r + a * a;
+        double h = eps3 * M * M * M * r / (sigma * sigma);
+        return delta + a * a * h * sinT * sinT <= tol;
+    }
+
+    /**
      * Innermost stable circular equatorial (ISCO) timelike-orbit radius.
      *
      * <p>Root-find on {@code dE_circ/dr = 0} where {@code E_circ(r)} is the

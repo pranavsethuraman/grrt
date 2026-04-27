@@ -23,5 +23,14 @@ public enum RayOutcome {
      * RK4 produced a NaN. Should not occur with a sensible horizon cushion;
      * treated as {@link #CAPTURED} by the shader. Logged by Renderer.
      */
-    NAN
+    NAN,
+
+    /**
+     * Ray crossed the equatorial plane inside the disk's radial extent
+     * {@code [rIsco, rOuter]}. Produced only by
+     * {@code AdaptiveRayTracer} when constructed with a {@code Disk}.
+     * The terminal state is the bisected (interpolated) crossing point,
+     * suitable for shader redshift / temperature evaluation.
+     */
+    HIT_DISK
 }

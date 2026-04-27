@@ -104,6 +104,7 @@ class KerrShadowTest {
                 case ESCAPED   -> SHADE_ESCAPED;
                 case MAX_STEPS -> SHADE_UNRESOLVED;
                 case NAN       -> Float.NaN;
+                case HIT_DISK  -> Float.NaN;   // not expected: this test has no Disk
             };
         }
     }

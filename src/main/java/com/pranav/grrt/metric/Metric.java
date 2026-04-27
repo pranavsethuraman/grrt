@@ -45,6 +45,31 @@ public interface Metric {
     }
 
     /**
+     * Test whether the position {@code x} sits at or inside the metric's
+     * event horizon, within tolerance {@code tol}.
+     *
+     * <p>Default implementation: {@code x[1] - horizonRadius() < tol}.
+     * Valid for any metric whose horizon locus is purely a function of r
+     * (Schwarzschild, Kerr, Minkowski). Position-dependent metrics —
+     * notably {@link JohannsenPsaltisMetric} for {@code ε₃ ≠ 0}, where
+     * the horizon is the locus {@code Δ + a² h sin²θ = 0} — must
+     * override.
+     *
+     * <p>Used by {@link com.pranav.grrt.renderer.AdaptiveRayTracer} as
+     * the per-step ray-termination predicate. The default keeps Phase 2
+     * behavior bit-exact: the existing {@code rNow < horizonRadius() +
+     * cushion} test reduces to the same comparison.
+     *
+     * @param x   8-state vector (only positional components 0..3 are
+     *            consulted) or 4-position vector
+     * @param tol non-negative tolerance / cushion in geometrized units
+     * @return true iff x is at or inside the horizon
+     */
+    default boolean isInsideHorizon(double[] x, double tol) {
+        return x[1] - horizonRadius() < tol;
+    }
+
+    /**
      * Metric tensor g_{μν} at position x.
      *
      * @param x position 4-vector (t, r, θ, φ)

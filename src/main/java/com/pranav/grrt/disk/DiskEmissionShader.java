@@ -56,13 +56,15 @@ public final class DiskEmissionShader implements RayShader {
     }
 
     /**
-     * 3B.1: returns 0 for all current outcomes ({@link RayOutcome}
-     * does not yet include a HIT_DISK variant — that lands in 3B.2
-     * along with the renderer wiring). Tests call {@link #intensity}
-     * directly.
+     * Dispatch on {@link RayOutcome#HIT_DISK} (Phase 3B.2 wiring):
+     * disk-hit rays return the bolometric Planck intensity at the
+     * crossing point; all other outcomes return 0.
      */
     @Override
     public float shade(RayOutcome outcome, double[] endState) {
+        if (outcome == RayOutcome.HIT_DISK) {
+            return intensity(endState);
+        }
         return 0.0f;
     }
 
