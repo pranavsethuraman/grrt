@@ -7,5 +7,6 @@ target/
 .DS_Store
 output/*.fits
 output/*.png
+output/*.csv
 !output/.gitkeep
 !output/first_shadow.png
