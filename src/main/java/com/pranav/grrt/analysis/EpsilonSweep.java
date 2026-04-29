@@ -172,8 +172,21 @@ public final class EpsilonSweep {
         }
     }
 
-    /** Summary returned by {@link #runSweep}: how many frames were rendered vs skipped. */
-    public record SweepResult(int rendered, int skipped) {
+    /**
+     * Summary returned by {@link #runSweep}.
+     *
+     * @param rendered count of frames freshly written to {@code csvPath} this run
+     * @param skipped  count of frames whose key was already in {@code csvPath} on resume
+     * @param failed   count of frames that raised an
+     *                 {@link IllegalStateException} from the disk / metric
+     *                 setup (recorded via the {@code [sweep-skip]} stdout
+     *                 line; no CSV row written for these). Typical cause:
+     *                 deep post-cusp JP at large positive ε₃ where the
+     *                 prograde ISCO doesn't exist and
+     *                 {@link NovikovThorneDisk}'s constructor cannot
+     *                 bracket {@code dE/dr = 0}.
+     */
+    public record SweepResult(int rendered, int skipped, int failed) {
     }
 
     /** Per-frame analysis bundle (package-private; used by tests). */
@@ -210,24 +223,51 @@ public final class EpsilonSweep {
         String gitSha = currentGitSha();
         int rendered = 0;
         int skipped = 0;
+        int failed = 0;
+        int totalFrames = cfg.epsilonGrid().length * cfg.inclinationDegrees().length;
+        int frameIdx = 0;
 
         for (double eps : cfg.epsilonGrid()) {
             for (double inclDeg : cfg.inclinationDegrees()) {
+                frameIdx++;
                 String key = formatKey(eps, inclDeg, cfg.resolution());
                 if (completedKeys.contains(key)) {
                     skipped++;
+                    System.out.printf(Locale.ROOT,
+                            "[sweep] frame %d/%d skip: eps3=%+.4f incl=%.1f res=%d (already in CSV)%n",
+                            frameIdx, totalFrames, eps, inclDeg, cfg.resolution());
                     continue;
                 }
+                System.out.printf(Locale.ROOT,
+                        "[sweep] frame %d/%d start: eps3=%+.4f incl=%.1f res=%d%n",
+                        frameIdx, totalFrames, eps, inclDeg, cfg.resolution());
                 Metric metric = new JohannsenPsaltisMetric(cfg.spin(), eps);
                 Path fitsPath = fitsPathFor(cfg, eps, inclDeg);
-                FrameResult fr = renderAndAnalyze(metric, inclDeg, cfg, fitsPath);
-                String row = buildRow(eps, inclDeg, cfg.resolution(), fr, gitSha);
-                appendRow(cfg.csvPath(), row);
-                completedKeys.add(key);
-                rendered++;
+                try {
+                    FrameResult fr = renderAndAnalyze(metric, inclDeg, cfg, fitsPath);
+                    String row = buildRow(eps, inclDeg, cfg.resolution(), fr, gitSha);
+                    appendRow(cfg.csvPath(), row);
+                    completedKeys.add(key);
+                    rendered++;
+                    System.out.printf(Locale.ROOT,
+                            "[sweep] frame %d/%d done: wallclock=%.3fs mean_r=%.4f delta_r_rms/mean=%.4f multipeak=%d%n",
+                            frameIdx, totalFrames, fr.renderWallclockS(),
+                            fr.stats().meanR(),
+                            fr.stats().deltaRrms() / fr.stats().meanR(),
+                            fr.multipeakBins());
+                } catch (IllegalStateException e) {
+                    // Typical cause: post-cusp JP at large +ε₃ where the prograde
+                    // ISCO doesn't exist and NovikovThorneDisk can't bracket
+                    // dE/dr = 0. Skip the frame; do not write a CSV row.
+                    failed++;
+                    System.out.printf(Locale.ROOT,
+                            "[sweep-skip] frame %d/%d: eps3=%+.4f incl=%.1f res=%d reason=%s%n",
+                            frameIdx, totalFrames, eps, inclDeg, cfg.resolution(),
+                            e.getMessage());
+                }
             }
         }
-        return new SweepResult(rendered, skipped);
+        return new SweepResult(rendered, skipped, failed);
     }
 
     /**
@@ -320,10 +360,16 @@ public final class EpsilonSweep {
      */
     public static void main(String[] args) throws IOException {
         double spin = 0.9;
+        // Grid reordered for early-feedback execution: ε₃ = 0 first (closest
+        // to Kerr, fastest expected), then small-|ε₃| values, then the cusp
+        // neighborhood, then mid magnitudes, then the extremes (-2.5, +1.00)
+        // last so they don't block all preceding frames if integration in
+        // the deep-deformation regime is slow. Resumability preserves
+        // progress if a late frame stalls. Sixteen values total — same set
+        // as docs/jp-parameter-space-notes.md §5.2.
         double[] epsGrid = {
-                -2.5, -1.5, -1.0, -0.5, -0.2, -0.1, -0.05, 0.0,
-                +0.05, +0.08, +0.10, +0.11, +0.12,
-                +0.13, +0.20, +1.00
+                 0.00, -0.05, +0.05, +0.08, -0.10, +0.10, +0.11, +0.12,
+                +0.13, -0.20, +0.20, -0.50, -1.00, -1.50, -2.50, +1.00
         };
         double[] inclDeg = { 17.0, 60.0 };
         int resolution = 512;
@@ -338,7 +384,17 @@ public final class EpsilonSweep {
                 1.0e-10, 1.0e-10,
                 1.0,
                 0.01,
-                10_000_000,
+                // 200k chosen empirically: at the production 1M cap, a few
+                // pathological pixels at large |ε₃| (e.g. -0.20 onward)
+                // consumed ~12 min CPU each before classifying MAX_STEPS,
+                // dominating wall-clock. 200k bounds the per-pixel CPU at
+                // ~25 s and lets the full sweep finish in a few hours rather
+                // than overnight. Pixels that would have taken 200k–1M steps
+                // render as MAX_STEPS (black) rather than capturing ground
+                // truth — acceptable for RNAAS-scope shadow-edge measurement;
+                // revisit if the prograde bin radii at extreme ε₃ disagree
+                // with visual inspection.
+                200_000,
                 180,
                 2.0
         );
@@ -347,8 +403,8 @@ public final class EpsilonSweep {
         SweepResult result = new EpsilonSweep().runSweep(cfg);
         double wallS = (System.nanoTime() - t0) / 1.0e9;
         System.out.printf(Locale.ROOT,
-                "Sweep complete: %d rendered, %d skipped (%.1f s wall-clock)%n",
-                result.rendered(), result.skipped(), wallS);
+                "Sweep complete: %d rendered, %d skipped, %d failed (%.1f s wall-clock)%n",
+                result.rendered(), result.skipped(), result.failed(), wallS);
     }
 
     // ------------------------------------------------------------------
