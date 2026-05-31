@@ -1,97 +1,112 @@
 # grrt
 
-General relativistic ray tracer in Java for null geodesic integration in stationary, axisymmetric spacetimes. Built from scratch to render black hole shadow images and, ultimately, quantify how photon ring observables constrain deviations from the Kerr geometry against Event Horizon Telescope data.
+**General Relativistic Ray Tracer** — a from-scratch Java 21 implementation for simulating null geodesics in curved spacetime, producing black hole shadow and accretion disk images under parameterised deviations from the Kerr metric.
 
-## Scientific motivation
+Built to support a Research Notes of the AAS (RNAAS) paper on photon-ring structure in the Johannsen-Psaltis spacetime at M87*-consistent spin.
 
-The shadow of a black hole (the region of a sky image where null geodesics terminate on the event horizon) is sensitive to the metric outside the horizon. For a Kerr black hole of spin `a`, the shadow is non-circular: frame dragging flattens the prograde edge and produces a characteristic D-shape at high inclination (Bardeen 1973). Parametrized deviations from Kerr (e.g., Johannsen-Psaltis 2011) distort the shadow in predictable, testable ways. Quantitative comparison of rendered shadows against the EHT images of M87* (EHT Collaboration 2019) places model-independent bounds on such deviations, complementing analyses already reported by the EHT consortium.
+## Highlights
 
-This repository provides an independent, open, from-first-principles implementation of the geometric ray-tracing component of that comparison. It is deliberately simple enough to audit, fast enough to sweep a parameter space on a workstation, and validated against closed-form analytic benchmarks at every stage.
+- Four spacetime metrics: Minkowski, Schwarzschild, Kerr (Boyer-Lindquist), and Johannsen-Psaltis (JP) with arbitrary &epsilon;&#8323; deformation
+- Adaptive Dormand-Prince 4(5) integrator with Shampine 5th-order dense-output interpolation for precise disk-crossing detection
+- Novikov-Thorne thin-disk emission model with Bardeen-Press-Teukolsky circular-orbit formulas and bolometric Planck intensity
+- Pluggable metric architecture: each spacetime is a drop-in replacement with hand-derived, Sympy-verified Christoffel symbols
+- 161 tests validating metric identities, Christoffel symmetries, null-norm conservation, shadow geometry, photon-orbit radii, disk flux, and ring extraction to machine precision
+- Reproducible 28-frame &epsilon;&#8323; sweep at 512&times;512 with resumable CSV output
 
-## Current status
+## Key results
 
-The code is developed in phases, each gated by numerical validation against an analytic reference. Milestones are tagged.
+**Photon-orbit bifurcation.** At spin a = 0.9 M, the JP prograde equatorial photon orbit merges with the Kerr horizon at &epsilon;&#8323;_crit = 0.1212. Beyond this threshold the prograde shadow edge is set by the event horizon, not a photon sphere.
 
-| Phase | Scope | Gate | Status |
-|-------|-------|------|--------|
-| 1 | Schwarzschild metric, RK4 integrator, pinhole camera, binary shader | Shadow radius matches `3√3 M` to sub-pixel precision | Complete (tag `phase-1-complete`) |
-| 2 | Kerr metric (Boyer-Lindquist), Dormand-Prince 5(4) adaptive integrator, polar-axis handling, RayTracer strategy split | Kerr D-shape horizontal diameter at `a = 0.9 M, i = π/2` matches Bardeen (1973) to the discretization floor at 256² and 1024²; E, L drift at machine precision | Complete (tag `phase-2-complete`) |
-| 3 | Johannsen-Psaltis metric, Novikov-Thorne disk, `ε₃` sweep, EHT M87* comparison, RNAAS note | JP ray tracer validated against Kerr at machine precision; prograde photon-orbit bifurcation (`ε₃_crit = 0.1212`) and ISCO disappearance (`ε₃ ∈ (0.13, 0.20)`) predictions; monotone circularity trend; integer-pixel extraction floor (~12%) precludes an EHT-level bound | Complete; tag `phase-3-complete` pending manuscript-PDF review |
+**ISCO disappearance.** The prograde innermost stable circular orbit ceases to exist for &epsilon;&#8323; &isin; (0.13, 0.20) at a = 0.9 M. Above this range, the standard Novikov-Thorne thin-disk model has no prograde branch.
 
-Details of the validation suite for each phase, including the specific tolerances, initial conditions, and measured drift/error values, are recorded in the commit history and in the test sources under `src/test/java/com/pranav/grrt/`.
+**Monotonic circularity trend.** The ring-circularity metric &delta;r/&#10216;r&#10217; increases monotonically from 0.121 to 0.198 across &epsilon;&#8323; &isin; [-2.5, -0.2] at inclination i = 17&deg;, confirming that increasingly negative JP deformations produce measurably rounder shadows.
+
+**Extraction precision limit.** Integer-pixel peak finding floors at ~12% fractional radius dispersion, well above the EHT M87* circularity of ~5.5% (Paper VI &sect;7.4). Sub-pixel extraction methods are identified as the required next step for EHT-level constraints on &epsilon;&#8323;.
 
 ## Architecture
 
-Four core abstractions, each with a minimal interface:
+```
+src/main/java/com/pranav/grrt/
+  metric/         Metric interface + 4 implementations (Schwarzschild, Kerr, Minkowski, JP)
+  integrator/     RK4 + Dormand-Prince 4(5) with adaptive step control and dense output
+  camera/         Observer tetrad and pixel-to-ray mapping
+  renderer/       Parallel ray tracer with configurable shaders and disk-crossing detection
+  disk/           Novikov-Thorne disk model + bolometric emission shader
+  analysis/       Ring extractor, circularity metric, epsilon sweep driver, consistency bound
+  io/             FITS image writer
 
-- `Metric` provides `g_{μν}(x)`, `g^{μν}(x)`, Christoffel symbols, horizon radius, and an optimized `geodesicAcceleration` override where exploitable sparsity warrants it. Implementations: `SchwarzschildMetric`, `KerrMetric`.
-- `Integrator` / `AdaptiveIntegrator` provide fixed-step (`RK4`) and adaptive (`DormandPrince45`) solvers for the null geodesic ODE. The adaptive interface returns a `StepStatus` record carrying acceptance, proposed next step, and error norm; tolerances are passed per call, not stored on the instance.
-- `RayTracer` is a strategy interface over the per-ray integration loop. `FixedStepRayTracer` preserves Phase 1 semantics; `AdaptiveRayTracer` adds FSAL-aware polar-axis reflection.
-- `Camera` and `Renderer` implement a pinhole observer in an orthonormal tetrad at large `r`, with a parallelized pixel loop via `Supplier<RayTracer>` and `ThreadLocal` state.
-
-Further implementation notes (coordinate conventions, sign choices, and the derivation paper trail for each metric) are in `CLAUDE.md`.
-
-## Build and run
-
-Requirements: Java 21, Maven 3.9+.
-
-```bash
-mvn test        # run the validation suite
-mvn package     # build the jar
+paper/            RNAAS manuscript source (AASTeX 6.3.1), figures, and build system
+scripts/          Python reference-value generators (Sympy + scipy)
+docs/             Phase plans, status snapshots, and parameter-space analysis
 ```
 
-The test suite is the primary entry point. Shadow renders are produced by the validation tests under `src/test/java/com/pranav/grrt/validation/` (Phase 1 Schwarzschild, Phase 2 Kerr D-shape at two resolutions) and written to `output/` as PNGs. A standalone rendering CLI is not part of Phase 1 or 2 scope.
+Each metric supplies its own closed-form Christoffel symbols. The integrator, camera, renderer, and disk never branch on metric type. Swapping Schwarzschild for Kerr for JP is a one-line constructor change.
 
-## Reproducibility
+## Build and test
 
-Each tagged phase is a self-contained validation checkpoint. To reproduce a phase's published results:
+Requires Java 21+ and Maven 3.9+.
 
 ```bash
-git checkout phase-2-complete
-mvn test
-```
+git clone https://github.com/pranavsethuraman/grrt.git
+cd grrt
 
-Rendered images and the full numeric output of the validation gates are written to stdout and to `output/`.
+mvn test                    # 134 fast tests (~25 s)
+mvn verify -PrunSlow        # full suite including integration tests (161 tests, ~55 s)
+```
 
 ## Reproducing the paper
 
-The Phase 3 Research Note lives in `paper/` and is built entirely from the committed sweep data and rendered FITS frames — no hand-edited plot data.
+The RNAAS note and its figures are fully reproducible from the committed sweep data.
 
 ```bash
-# 1. Regenerate output/sweep.csv + the FITS frames if absent (slow):
+# 1. Regenerate output/sweep.csv + FITS frames (slow, ~2 h):
 mvn verify -PrunSlow
 
-# 2. Build figures and compile the manuscript:
+# 2. Build figures (no LaTeX needed):
 cd paper
-make figures     # figures only -> figures/*.pdf  (no LaTeX engine needed)
+make figures
+
+# 3. Compile the manuscript (requires a LaTeX engine):
+make             # autodetects latexmk / pdflatex / tectonic
 make wordcount   # RNAAS body word-count gate (<= 1000 words)
-make             # figures + manuscript.pdf (needs a LaTeX engine)
 ```
 
-`make figures` provisions a local `paper/.venv` (NumPy, Matplotlib, pandas, Astropy) and writes the two PDFs reproducibly — byte-identical across runs. `make` (i.e. `make paper`) additionally compiles `manuscript.tex`; it autodetects `latexmk`, `pdflatex`, or `tectonic` and prints a clear message if none is installed.
+`make figures` provisions a local virtual environment and writes both PDFs deterministically (byte-identical across runs via SOURCE_DATE_EPOCH).
 
-## License
+## Validation
 
-MIT. See `LICENSE`.
+Every phase ships with quantitative validation gates. Selected highlights:
 
-## Citation
+| Gate | Tolerance | Achieved |
+|---|---|---|
+| Metric inverse identity g &middot; g&#8315;&#185; = I | 10&#8315;&#185;&#178; | ~10&#8315;&#185;&#179; |
+| Kerr reduction of JP at &epsilon;&#8323; = 0 | 10&#8315;&#185;&#178; | 1.42 &times; 10&#8315;&#185;&#8308; |
+| Null-norm drift over 1000 M (JP, a = 0.9, &epsilon;&#8323; = 0.5) | 10&#8315;&#8312; | 1.67 &times; 10&#8315;&#185;&#8304; |
+| NT flux vs Page-Thorne 1974 reference (12 radii) | 10&#8315;&#8310; | 1.20 &times; 10&#8315;&#185;&#8308; |
+| DP45 dense output at midstep vs half-step direct | 10&#8315;&#8312; | 1.00 &times; 10&#8315;&#185;&#185; |
+| Face-on disk centroid symmetry at 256&times;256 | 0.5 px | 0.0 px |
+| JP photon-orbit radius vs independent Sympy derivation (7 pairs) | 10&#8315;&#185;&#8304; | 2.09 &times; 10&#8315;&#185;&#178; |
 
-If this code supports work leading to a publication, please cite the repository by its tag. A DOI and a formal citation block will be added when the first associated manuscript is submitted.
+Full gate details are recorded in the phase status documents under `docs/`.
 
-```
-Sethuraman, P. (2026). grrt: a general relativistic ray tracer in Java.
-https://github.com/pranavsethuraman/grrt  (tag: phase-2-complete)
-```
+## Phase progression
+
+| Phase | Scope | Tag |
+|---|---|---|
+| 1 | Schwarzschild shadow, RK4 integrator, FITS output | `phase-1-complete` |
+| 2 | Kerr metric, adaptive DP45, polar-axis handling | `phase-2-complete` |
+| 3A | Johannsen-Psaltis metric, 6 validation gates, cusp discovery | `phase-3a-complete` |
+| 3B | Novikov-Thorne disk, dense-output interpolation, disk-crossing detection | `phase-3b-nt-disk` |
+| 3C | Ring extraction, circularity analysis, 28-frame production sweep | `phase-3c-sweep` |
+| 3D | Consistency bound, figures, RNAAS manuscript | `phase-3-complete` |
 
 ## References
 
-- Bardeen, J. M. (1973). *Timelike and null geodesics in the Kerr metric.* In *Black Holes*, ed. C. DeWitt and B. S. DeWitt, Gordon and Breach.
-- Chandrasekhar, S. (1983). *The Mathematical Theory of Black Holes.* Oxford University Press.
-- Dormand, J. R. and Prince, P. J. (1980). *A family of embedded Runge-Kutta formulae.* J. Comput. Appl. Math. 6, 19.
-- Event Horizon Telescope Collaboration (2019). *First M87 Event Horizon Telescope Results.* ApJL 875, L1 through L6.
-- Hairer, E., Nørsett, S. P., and Wanner, G. (1993). *Solving Ordinary Differential Equations I: Nonstiff Problems* (2nd ed.), Springer.
-- Johannsen, T. and Psaltis, D. (2011). *A metric for rapidly spinning black holes suitable for strong-field tests of the no-hair theorem.* Phys. Rev. D 83, 124015.
+- Event Horizon Telescope Collaboration (2019). First M87 Event Horizon Telescope Results. I-VI. *ApJL*, 875.
+- Johannsen, T. and Psaltis, D. (2011). Metric for rapidly spinning black holes suitable for strong-field tests of the no-hair theorem. *Phys. Rev. D*, 83, 124015.
+- Novikov, I. D. and Thorne, K. S. (1973). Astrophysics of Black Holes. In *Black Holes (Les Astres Occlus)*.
+- Page, D. N. and Thorne, K. S. (1974). Disk-Accretion onto a Black Hole. I. *ApJ*, 191, 499.
 
-## See also
+## Licence
 
-- `CLAUDE.md` for coordinate conventions, derivation notes, and contributor guidance.
+MIT. See `LICENSE`.
