@@ -74,18 +74,28 @@ context, with text noting that detecting the cusp directly
 requires a cusp-sensitive diagnostic beyond the scope of this
 note.
 
-### 2.3 EHT Paper VI Table 7 m=1 amplitude hardcoded
+### 2.3 EHT Paper VI §7.4 circularity hardcoded
 
-`ConsistencyBound` reads no external EHT file. The Paper VI Table 7
-fractional m=1 amplitude (mid value + 1σ half-width) is committed
-as two `private static final double` constants at the top of
-`ConsistencyBound.java`, each with an inline `@see` comment citing
-the table number, page, and value. Updating EHT inputs is a
-one-line source edit + recompile.
+`ConsistencyBound` reads no external EHT file. The Paper VI §7.4
+(Figure 18) fractional ring circularity (mid value 0.055 + band
+half-width 0.005) is committed as two `private static final double`
+constants at the top of `ConsistencyBound.java`, each with an inline
+`@see` comment citing the section, figure, and value. Updating EHT
+inputs is a one-line source edit + recompile.
 
-Rationale: a single integer-and-two-floats lookup does not justify
-a CSV parser or a new dependency, and pins the bound to a
-specific, version-controlled EHT data version.
+Rationale: a single two-floats lookup does not justify a CSV parser
+or a new dependency, and pins the bound to a specific,
+version-controlled EHT data version.
+
+> **Correction (Phase 3D.1, 2026-05-31):** this subsection originally
+> cited "Paper VI Table 7 m=1 amplitude." Paper VI Table 7 is the
+> θ_g/mass summary and contains no asymmetry figure; the correct
+> source is **§7.4 "The Circular Shapes of the M87 Images" / Figure
+> 18**, whose fractional-diameter-spread distribution peaks at
+> ∼0.05–0.06. The benchmark quantity is the geometric circularity
+> δ_r/⟨r⟩, **not** a Fourier m=1 amplitude. See the `ConsistencyBound`
+> class Javadoc for the multipole-mismatch caveat and the honest-null
+> outcome at i = 17°.
 
 ### 2.4 Two figures, single column
 
@@ -161,11 +171,11 @@ paper/figures/.gitkeep
 ```java
 public final class ConsistencyBound {
 
-    /** EHT 2019 Paper VI Table 7, M87* m=1 fractional amplitude.
-     *  Mid value to be filled at implementation time from the
-     *  published table; this plan does not pre-commit a number. */
-    private static final double EHT_M1_AMPLITUDE_MID = /* TBD */ 0.0;
-    private static final double EHT_M1_AMPLITUDE_SIGMA = /* TBD */ 0.0;
+    /** EHT 2019 Paper VI §7.4 (Figure 18), M87* fractional ring
+     *  circularity: mid 0.055, band half-width 0.005 (the published
+     *  0.05–0.06 peak range). NOT Table 7 (θ_g/mass summary). */
+    private static final double EHT_CIRCULARITY_MID = 0.055;
+    private static final double EHT_CIRCULARITY_SIGMA = 0.005;
 
     /** Domain on which the i=17° sweep is strictly monotone in
      *  δ_r/⟨r⟩. Hardcoded from sweep inspection at commit 9def498. */
@@ -376,11 +386,12 @@ the tag criteria.
 These do not block planning, but the implementer (likely Claude
 under user direction) should raise them before writing code:
 
-1. **EHT numerical values.** What exact `(A_1_mid, A_1_sigma)`
-   should be hardcoded in `ConsistencyBound.java`? Paper VI Table 7
-   has multiple amplitude estimates across the imaging methods;
-   the manuscript text should match the constants. User to supply
-   or approve a specific row reference.
+1. **EHT numerical values.** *(Resolved 2026-05-31.)* The hardcoded
+   constants are the Paper VI §7.4 / Figure 18 fractional ring
+   circularity: mid 0.055, band half-width 0.005 (the published
+   0.05–0.06 peak range). Table 7 — originally cited here — is the
+   θ_g/mass summary and was the wrong source; see §2.3. The manuscript
+   text matches these constants.
 2. **Authorship list and ORCID.** Required by AASTeX. User to
    provide.
 3. **Acknowledgment of computing resources.** Required by AAS

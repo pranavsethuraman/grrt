@@ -267,7 +267,7 @@ cusp or knee in `δ_r/⟨r⟩` vs ε₃ is expected near `ε₃_crit`.
 For the M87* 17° inclination and EHT angular resolution, the
 transition is numerically distinct from smooth-deformation regime
 by a detectable fraction of ⟨r⟩. Whether EHT's current uncertainty
-on the Fourier m=1 amplitude (Paper VI Table 7) can resolve a
+on the ring circularity (Paper VI §7.4, Fig. 18) can resolve a
 sweep through `ε₃_crit` is a quantitative question for Phase 3D.
 Pre-emptively: at a=0.9, `ε₃_crit = 0.12` is well inside the
 observationally-allowed region (EHT bounds are of order `|ε₃| < 1`
@@ -335,8 +335,8 @@ Project section, reframed in Commit A). Methodological points:
 - **Bound extraction.** The two-sided bound on ε₃ is extracted from
   the smooth-deformation regime
   `ε₃ ∈ (ε₃_pathology, ε₃_crit) ≈ (−2.97, +0.12)` at a = 0.9,
-  i = 17°, by interpolating `δ_r/⟨r⟩` against EHT Paper VI Table 7
-  circularity (Fourier m=1) through the monotone smooth segment of
+  i = 17°, by interpolating `δ_r/⟨r⟩` against EHT Paper VI §7.4
+  (Fig. 18) ring circularity through the monotone smooth segment of
   the sweep.
 - **Cusp as prediction.** The photon-sphere merger at `ε₃_crit` is
   presented as a separate prediction of the JP metric — a

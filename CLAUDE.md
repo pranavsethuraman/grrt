@@ -14,7 +14,9 @@ bifurcation at M87*-consistent spin. Two coupled results:
 
 1. A two-sided bound on ε₃ extracted from the smooth-deformation regime
    (ε₃ ∈ (ε₃_pathology, ε₃_crit) at a = 0.9, approximately (−2.97, +0.12))
-   by interpolating δ_r/⟨r⟩ against EHT Paper VI Table 7 circularity.
+   by interpolating δ_r/⟨r⟩ against the EHT Paper VI §7.4 (Figure 18)
+   ring-circularity constraint. (Corrected from "Table 7", which is the
+   θ_g/mass summary and holds no circularity figure.)
 2. A prediction, testable by future higher-precision observations, of a
    qualitative shadow-structure change at ε₃_crit ≈ 0.12 for a = 0.9:
    above the cusp the prograde side of the shadow is bounded by the event

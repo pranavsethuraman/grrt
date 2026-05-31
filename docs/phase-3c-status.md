@@ -387,10 +387,11 @@ src/test/java/com/pranav/grrt/analysis/ConsistencyBoundTest.java
    prediction of the ISCO disappearance at
    `ε₃_ISCO ∈ (+0.13, +0.20)` testable by future high-precision
    observations of the disk inner edge.
-3. **EHT data ingestion.** `ConsistencyBound` reads EHT 2019 Paper
-   VI Table 7 Fourier m=1 fractional amplitude. The CSV stores
-   `fourier_m1_amp / mean_r` implicitly (both columns are present);
-   no CSV migration needed.
+3. **EHT data ingestion.** `ConsistencyBound` compares against the
+   EHT 2019 Paper VI §7.4 (Fig. 18) fractional ring circularity
+   (corrected from "Table 7 m=1 amplitude"; Table 7 is the θ_g/mass
+   summary). The CSV stores `delta_r_rms / mean_r` (both columns are
+   present); no CSV migration needed.
 4. **RMS-vs-Fourier conversion.** The CSV stores both RMS and
    Fourier m=1 amplitudes. `ConsistencyBound` should use Fourier
    m=1 directly (matches Psaltis 2020 convention) and compute the

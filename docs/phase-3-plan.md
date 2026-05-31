@@ -25,7 +25,7 @@ re-approval.
 | Disk | Novikov-Thorne thin, optically thick | `r ∈ [r_ISCO(a, ε₃), 20 M]` |
 | Asymmetry metric (primary) | `δ_r/⟨r⟩ ≡ √mean((rᵢ − ⟨r⟩)²) / ⟨r⟩` | RMS; correction 3 |
 | Asymmetry metric (secondary) | peak-to-peak, Fourier m=1 | Stored in CSV for robustness |
-| EHT benchmark | Fourier m=1 fractional amplitude, Paper VI Table 7 | D-D1; Psaltis 2020 comparator |
+| EHT benchmark | Ring circularity (δ_r/⟨r⟩), Paper VI §7.4/Fig. 18 | D-D1; corrected — see phase-3d-plan §2.3 |
 
 ---
 
@@ -533,8 +533,13 @@ src/test/java/com/pranav/grrt/analysis/ConsistencyBoundTest.java
 
 ### 7.3 EHT benchmark (D-D1, cusp-aware)
 
+> **Superseded by `phase-3d-plan.md` §2.3 (2026-05-31):** the benchmark
+> is the Paper VI **§7.4 / Figure 18** ring circularity, not a "Table 7
+> m=1 amplitude" (Table 7 is the θ_g/mass summary). The m=1/Psaltis
+> framing below is retained as the original phase-3 record.
+
 Primary benchmark: **Fourier m=1 fractional amplitude** from EHT 2019
-Paper VI Table 7. Rationale: this is the quantity Psaltis et al. 2020
+Paper VI §7.4 (Fig. 18). Rationale: this is the quantity Psaltis et al. 2020
 uses to derive their bounds, and the RNAAS paper's methodological
 comparator is Psaltis 2020. Using the same convention eliminates a
 conversion step in the comparison section.
@@ -620,7 +625,7 @@ In order. 3A coding begins only after all three:
 | D-C2 | Resolution | Revised | 512² at both inclinations |
 | D-C3 | Ring definition | Approved | Dominant bright ring, 180 bins, per-bin peak |
 | D-C4 | Asymmetry metric | Superseded by correction 3 | RMS primary; p2p + m1 secondary |
-| D-D1 | EHT benchmark | Locked | Fourier m=1, Paper VI Table 7 |
+| D-D1 | EHT benchmark | Superseded (→ 3D) | Ring circularity, Paper VI §7.4/Fig. 18 |
 | D-D2 | `paper/` in git | Locked | Yes for source; PDF/build-artifacts excluded |
 
 ---
