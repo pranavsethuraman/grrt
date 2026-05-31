@@ -1,0 +1,6 @@
+# Phase 3D figure-generation dependencies (docs/phase-3d-plan.md §4.2).
+# Pinned lower bounds; installed into paper/.venv by `make deps`.
+numpy>=2.0
+matplotlib>=3.9
+pandas>=2.2
+astropy>=6.1
