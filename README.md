@@ -16,7 +16,7 @@ The code is developed in phases, each gated by numerical validation against an a
 |-------|-------|------|--------|
 | 1 | Schwarzschild metric, RK4 integrator, pinhole camera, binary shader | Shadow radius matches `3√3 M` to sub-pixel precision | Complete (tag `phase-1-complete`) |
 | 2 | Kerr metric (Boyer-Lindquist), Dormand-Prince 5(4) adaptive integrator, polar-axis handling, RayTracer strategy split | Kerr D-shape horizontal diameter at `a = 0.9 M, i = π/2` matches Bardeen (1973) to the discretization floor at 256² and 1024²; E, L drift at machine precision | Complete (tag `phase-2-complete`) |
-| 3 | Johannsen-Psaltis parameterized metric, accretion disk emission, EHT M87* comparison | Photon ring observables as a function of JP deviation parameters; consistency bounds from M87* | Planned |
+| 3 | Johannsen-Psaltis metric, Novikov-Thorne disk, `ε₃` sweep, EHT M87* comparison, RNAAS note | JP ray tracer validated against Kerr at machine precision; prograde photon-orbit bifurcation (`ε₃_crit = 0.1212`) and ISCO disappearance (`ε₃ ∈ (0.13, 0.20)`) predictions; monotone circularity trend; integer-pixel extraction floor (~12%) precludes an EHT-level bound | Complete; tag `phase-3-complete` pending manuscript-PDF review |
 
 Details of the validation suite for each phase, including the specific tolerances, initial conditions, and measured drift/error values, are recorded in the commit history and in the test sources under `src/test/java/com/pranav/grrt/`.
 
@@ -52,6 +52,23 @@ mvn test
 ```
 
 Rendered images and the full numeric output of the validation gates are written to stdout and to `output/`.
+
+## Reproducing the paper
+
+The Phase 3 Research Note lives in `paper/` and is built entirely from the committed sweep data and rendered FITS frames — no hand-edited plot data.
+
+```bash
+# 1. Regenerate output/sweep.csv + the FITS frames if absent (slow):
+mvn verify -PrunSlow
+
+# 2. Build figures and compile the manuscript:
+cd paper
+make figures     # figures only -> figures/*.pdf  (no LaTeX engine needed)
+make wordcount   # RNAAS body word-count gate (<= 1000 words)
+make             # figures + manuscript.pdf (needs a LaTeX engine)
+```
+
+`make figures` provisions a local `paper/.venv` (NumPy, Matplotlib, pandas, Astropy) and writes the two PDFs reproducibly — byte-identical across runs. `make` (i.e. `make paper`) additionally compiles `manuscript.tex`; it autodetects `latexmk`, `pdflatex`, or `tectonic` and prints a clear message if none is installed.
 
 ## License
 

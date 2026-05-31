@@ -8,19 +8,25 @@ Context for Claude Code sessions in this repository. Read this before writing co
 
 **grrt** is a general relativistic ray tracer in Java 21, built with Maven. It
 simulates null geodesics in curved spacetime to produce black hole images. The
-end goal is a Research Notes of the AAS (RNAAS) paper using photon-ring
-asymmetry as a diagnostic of the Johannsen-Psaltis (JP) prograde photon-sphere
-bifurcation at M87*-consistent spin. Two coupled results:
+end goal is a Research Notes of the AAS (RNAAS) paper on the Johannsen-Psaltis
+(JP) prograde photon-orbit bifurcation at M87*-consistent spin. The note
+reports the pipeline, two future-observable predictions, a circularity trend,
+and a methodological limitation. **It does not claim a two-sided EHT bound**
+(decision 2026-05-31, "honest null"): at a = 0.9, i = 17° the integer-pixel
+ring-extraction noise floor (~12% in δ_r/⟨r⟩) sits well above the EHT M87*
+circularity (~5.5%; Paper VI §7.4 / Figure 18), so the EHT band falls below
+the swept curve and constrains nothing. Five results:
 
-1. A two-sided bound on ε₃ extracted from the smooth-deformation regime
-   (ε₃ ∈ (ε₃_pathology, ε₃_crit) at a = 0.9, approximately (−2.97, +0.12))
-   by interpolating δ_r/⟨r⟩ against the EHT Paper VI §7.4 (Figure 18)
-   ring-circularity constraint. (Corrected from "Table 7", which is the
-   θ_g/mass summary and holds no circularity figure.)
-2. A prediction, testable by future higher-precision observations, of a
-   qualitative shadow-structure change at ε₃_crit ≈ 0.12 for a = 0.9:
-   above the cusp the prograde side of the shadow is bounded by the event
-   horizon itself, not by a photon sphere.
+1. **Pipeline.** An open JP ray tracer with a Novikov-Thorne disk, validated
+   against Kerr/Schwarzschild at machine precision (gates 1–6 across 3A–3C).
+2. **Photon-orbit bifurcation** at ε₃_crit = 0.1212 (a = 0.9): above the cusp
+   the prograde shadow edge is the event horizon, not a photon sphere.
+3. **ISCO disappearance** for ε₃ ∈ (+0.13, +0.20) at a = 0.9.
+4. A **monotonic δ_r/⟨r⟩ trend** on ε₃ ∈ [−2.5, −0.2] at i = 17°.
+5. A **noise-floor finding**: naive ring extraction at ~12% precludes
+   EHT-level circularity bounds on ε₃; sub-pixel extraction is required.
+
+Results 2–3 are testable by future higher-precision observations.
 
 **Phases**
 1. Schwarzschild ray tracer with fixed-step RK4. (current)
@@ -188,7 +194,7 @@ and laptop reboot.
 - [x] Disk emission model (Phase 3)
 - [x] `JohannsenPsaltisMetric` (Phase 3)
 - [x] EHT comparison pipeline (Phase 3)
-- [ ] RNAAS paper
+- [x] RNAAS paper (manuscript + figures drafted; `phase-3-complete` tag pending author prose + rendered-PDF review)
 
 ---
 

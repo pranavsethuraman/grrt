@@ -1,0 +1,131 @@
+% grrt RNAAS note (Phase 3D.3). Build: `make paper` (needs latexmk,
+% pdflatex, or tectonic). Body word budget <= 1000: see `make wordcount`.
+% AUTHOR/AFFILIATION/ORCID below are placeholders -- fill before submission.
+\documentclass[RNAAS]{aastex631}
+
+\begin{document}
+
+\title{Photon-Orbit Bifurcation and ISCO Disappearance in a
+Johannsen--Psaltis Ray Tracer at M87* Spin}
+
+% TODO(author): replace the placeholder ORCID below before submission.
+\author[0000-0000-0000-0000]{Pranav Sethuraman}
+\affiliation{Independent Researcher, Fremont, CA, USA}
+
+\begin{abstract}
+We present \texttt{grrt}, an open-source general-relativistic ray tracer,
+and use it to sweep the single Johannsen--Psaltis (JP) deviation parameter
+$\epsilon_3$ at spin $a=0.9$; the code reproduces Kerr to machine
+precision. We report two future-observable predictions---a prograde
+photon-orbit bifurcation at $\epsilon_3^{\rm crit}=0.1212$ and prograde
+ISCO disappearance for $\epsilon_3\in(0.13,0.20)$---and a monotonic
+ring-circularity trend. Naive integer-pixel ring extraction floors at
+$\sim\!12\%$, well above the EHT M87* circularity ($\sim\!5.5\%$); we
+therefore claim no $\epsilon_3$ bound and identify sub-pixel extraction
+as the required next step.
+\end{abstract}
+
+\section{Introduction}
+The Event Horizon Telescope (EHT) image of M87* \citep{eht2019:paper-i}
+is consistent with the shadow of a Kerr black hole, yet the data also
+admit non-Kerr spacetimes. The Johannsen--Psaltis (JP) metric
+\citep{johannsen:2011} parameterizes such deviations through a series
+whose leading free term $\epsilon_3$ preserves the asymptotic and
+weak-field limits. Shadow circularity is a natural diagnostic: the EHT
+reports the M87* image circular to a fractional diameter spread of
+$\sim\!5$--$6\%$ \citep[][\S7.4]{eht2019:paper-vi}. We present an
+independent, open ray tracer and a controlled $\epsilon_3$ sweep at the
+M87*-favored spin $a=0.9$, and ask what the sweep predicts and what
+measurement precision a circularity test of $\epsilon_3$ would demand.
+We do not claim a bound; we report the pipeline, two qualitative
+predictions, and a methodological limit.
+
+\section{Methods}
+\texttt{grrt} is a Java~21 ray tracer (signature $-\!+\!+\!+$,
+$G=c=1$). Each metric supplies closed-form, hand-derived Christoffel
+symbols, verified symbolically against an independent \textsc{SymPy}
+derivation; null geodesics are integrated with an adaptive
+Dormand--Prince~4(5) scheme \citep{dormandprince:1980} from a static
+observer tetrad, and disk emission follows a Novikov--Thorne thin disk
+\citep{novikovthorne:1973,pagethorne:1974}, with images written to FITS.
+The JP metric \citep{johannsen:2011} enters as a drop-in \texttt{Metric};
+the integrator, camera, and renderer never branch on metric type. The
+implementation passes machine-precision validation gates: metric--inverse
+identity and Christoffel symmetry to $10^{-12}$; flat- and horizon-limit
+recovery; closed circular photon orbits; null-condition drift bounds; and
+convergence of the Schwarzschild shadow to $3\sqrt{3}\,M$ and of the Kerr
+landmarks. We sweep $\epsilon_3\in[-2.5,+0.13]$ (16 values) at $a=0.9$,
+inclinations $i\in\{17^\circ,60^\circ\}$, $512^2$ pixels. A ring extractor
+bins each image into $180$ azimuthal sectors and records the
+radially-outermost intensity peak per sector (integer-pixel radius),
+reducing the image to the circularity $\delta_r/\langle r\rangle$ (the
+ratio of the per-sector radius RMS to its mean). Code and data are
+reproducible at repository tag \texttt{phase-3-complete}; the sweep was
+generated at commit \texttt{4f711c0}.
+
+\section{Results}
+\emph{Photon-orbit bifurcation.} At $a=0.9$ the prograde equatorial
+photon orbit ceases to exist above $\epsilon_3^{\rm crit}=0.1212$: beyond
+this cusp the prograde shadow edge is set by the event horizon rather
+than by a photon sphere. \emph{ISCO disappearance.} The prograde
+innermost stable circular orbit disappears for $\epsilon_3\in(0.13,0.20)$;
+there the Novikov--Thorne inner edge is undefined and the corresponding
+sweep frames are skipped. Both are sharp, qualitative changes distinct
+from the smooth-deformation regime and testable by future higher-precision
+observations. \emph{Circularity trend.} Figure~\ref{fig:asym} shows
+$\delta_r/\langle r\rangle$ versus $\epsilon_3$. On the monotone
+sub-interval $\epsilon_3\in[-2.5,-0.2]$ at $i=17^\circ$ the circularity
+rises smoothly from $0.121$ to $0.198$, plateauing near $0.195$ for
+$|\epsilon_3|\lesssim0.1$. Figure~\ref{fig:gallery} shows the $i=17^\circ$
+disk images rounding as $\epsilon_3$ increases. \emph{No EHT bound.} The
+EHT \S7.4 circularity band ($0.055\pm0.005$) lies entirely below the
+measured $\delta_r/\langle r\rangle$ ($\geq0.12$ throughout the sweep);
+inverting the band against the monotone curve yields no two-sided
+$\epsilon_3$ bound---the constraint runs off the low-$\epsilon_3$ edge.
+
+\section{Discussion}
+The $\sim\!0.12$ floor is not physical asymmetry but the noise floor of
+integer-pixel peak finding: snapping each per-sector radius to the
+nearest pixel ($\sim\!0.06\,M$ at $512^2$) caps the recoverable
+circularity well above the EHT precision. Furthermore
+$\delta_r/\langle r\rangle$ is an all-azimuthal-mode \emph{radius} RMS,
+whereas the EHT \S7.4 measure is a \emph{diameter} spread in which a pure
+$m=1$ asymmetry cancels; since the former bounds the latter from above,
+our consistency test is conservative. Reaching the EHT's $\sim\!5.5\%$
+circularity demands sub-pixel (e.g.\ parabolic) peak localization and a
+diameter-matched estimator---the natural next step before $\epsilon_3$
+can be constrained. The photon-orbit and ISCO predictions are insensitive
+to extraction precision and stand independent of this limitation.
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=0.62\linewidth]{figures/asymmetry_vs_epsilon3.pdf}
+\caption{Ring circularity $\delta_r/\langle r\rangle$ versus the JP
+deviation $\epsilon_3$ at $a=0.9$ for $i=17^\circ$ and $60^\circ$. The
+grey band is the EHT 2019 \S7.4 circularity ($0.055\pm0.005$); it lies
+below both curves, so no two-sided $\epsilon_3$ bound follows. The dashed
+line marks the photon-orbit cusp $\epsilon_3^{\rm crit}\approx0.12$ and
+the shaded vertical band the ISCO-disappearance interval $(0.13,0.20)$.
+\label{fig:asym}}
+\end{figure}
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=\linewidth]{figures/image_gallery.pdf}
+\caption{Novikov--Thorne disk images at $i=17^\circ$, $a=0.9$, for
+$\epsilon_3\in\{-2.5,-1.0,0.0,+0.13\}$ on a shared logarithmic intensity
+scale. The shadow rounds and contracts as $\epsilon_3$ increases toward
+the photon-orbit cusp. \label{fig:gallery}}
+\end{figure}
+
+\begin{acknowledgments}
+\software{nom-tam-fits, JUnit~5, NumPy \citep{numpy},
+Matplotlib \citep{matplotlib}, Astropy \citep{astropy}, pandas}.
+Computations ran on a MacBook~Pro~M3 (16~GB). This Note uses public EHT
+data products.
+\end{acknowledgments}
+
+\bibliography{refs}
+\bibliographystyle{aasjournal}
+
+\end{document}
